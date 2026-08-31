@@ -1,16 +1,28 @@
-## Hi there 👋
+# PGWINDS
 
-<!--
-**pgwinds/pgwinds** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+The public website for Prince of Songkla University Wind Orchestra.
 
-Here are some ideas to get you started:
+## Development
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Commands
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
+
+## Supabase foundation
+
+The Phase 2 schema is in `supabase/migrations/`. It is version-controlled but has **not** been applied to the remote Supabase project.
+
+Add the public project URL and anon key to `.env.local` to enable database reads. Until then, the website displays static fallback content.
+
+Admin authentication, user provisioning, and applying the migration to Supabase are deliberately deferred to the next approved steps.

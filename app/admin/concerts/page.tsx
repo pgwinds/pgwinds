@@ -1,0 +1,5 @@
+import { createConcert } from "@/lib/actions/admin";
+
+export const metadata = { title: "Admin · Concerts" };
+
+export default function AdminConcertsPage() { return <><header className="admin-page-header"><p className="eyebrow">Content</p><h1>Concerts</h1><p>Create an upcoming performance or prepare an archive record.</p></header><form className="admin-editor" action={createConcert}><label>Title<input name="title" required /></label><label>Slug<input name="slug" placeholder="spring-concert-2026" required pattern="[a-z0-9]+(-[a-z0-9]+)*" /></label><label>Date label<input name="displayDate" placeholder="12 October 2026" required /></label><label>Starts at<input name="startsAt" type="datetime-local" /></label><label>Venue<input name="venue" required /></label><label>Status<select name="status" defaultValue="draft"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label><label className="admin-editor__wide">Description<textarea name="description" rows={5} required /></label><button className="button" type="submit">Create concert</button></form></>; }
