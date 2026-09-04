@@ -83,6 +83,12 @@ The administrator screen lists current administrators, prevents self-removal, en
 
 Never place this role in `user_metadata`; the application and RLS policies use `app_metadata.pgwinds_role`.
 
+### Password-reset email
+
+The reset flow uses Supabase Auth and sends users to `/auth/callback?next=/auth/update-password`. The project Site URL is `https://pgwinds.vercel.app`.
+
+For reliable delivery, configure a custom SMTP provider in **Supabase Dashboard → Authentication → Emails → SMTP Settings**. The Free-plan default mail service is rate-limited and is appropriate only for initial testing. Keep the SMTP host, port, sender address, username, and password in Supabase; never commit them to this repository.
+
 ## Deployment workflow
 
 Vercel is connected to the `pgwinds/pgwinds` GitHub repository. Every push to `main` automatically creates a production deployment.

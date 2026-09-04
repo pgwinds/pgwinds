@@ -4,6 +4,16 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
+function resetErrorMessage(error: { code?: string; message?: string }) {
+  if (error.code === "over_email_send_rate_limit" || error.message?.toLowerCase().includes("rate limit")) {
+    return "A reset email was requested recently. Please wait before trying again, or ask a site administrator to configure SMTP for reliable delivery.";
+  }
+  if (error.code === "over_request_rate_limit") {
+    return "Too many reset requests were made from this connection. Please wait and try again.";
+  }
+  return "We could not send the reset email. Please try again later.";
+}
+
 export function PasswordResetRequestForm() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -15,7 +25,7 @@ export function PasswordResetRequestForm() {
     const email = String(formData.get("email") ?? "");
     const { error: resetError } = await createClient().auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?next=/auth/update-password` });
     setPending(false);
-    if (resetError) setError("We could not send the reset email. Please try again later.");
+    if (resetError) setError(resetErrorMessage(resetError));
     else setMessage("Check your email for a secure link to set a new password.");
   }
 
