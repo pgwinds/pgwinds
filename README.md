@@ -61,6 +61,8 @@ Run all three before committing a substantive change.
 
 GitHub Actions runs the same checks automatically for every pull request and every push to `main`. It does not receive Supabase credentials; the build verifies that the public-site fallback remains safe when no environment variables are available.
 
+Dependabot checks npm packages and GitHub Actions monthly. It opens limited, reviewable pull requests and never merges updates into `main` automatically.
+
 ## Supabase
 
 The project is linked to the `pgwinds-production` Supabase project (`pdomkhrzqviamzlfxcia`). All migrations in `supabase/migrations/` have been applied to the remote database.
