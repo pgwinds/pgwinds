@@ -1,17 +1,55 @@
 # PGWINDS
 
-The public website for Princess Galyani Vadhana Institute of Music Wind Symphony.
+The official website for the **Princess Galyani Vadhana Institute of Music Wind Symphony**.
 
-## Development
+- Public website: [pgwinds.vercel.app](https://pgwinds.vercel.app)
+- Admin area: [pgwinds.vercel.app/admin](https://pgwinds.vercel.app/admin)
+- Source repository: [pgwinds/pgwinds](https://github.com/pgwinds/pgwinds)
+
+## Technology
+
+- Next.js 15 with the App Router and TypeScript
+- Supabase for PostgreSQL, Authentication, Row Level Security (RLS), and Storage
+- Vercel for production deployment
+
+The public site is available to everyone. The `/admin` area is private and requires an authenticated Supabase user whose `app_metadata.pgwinds_role` is `admin`.
+
+## What the project includes
+
+### Public website
+
+- Home, About, Concerts, Gallery, Contact, and Repertoire
+- Artists, News, Events, Members, Alumni, and Concert Archive foundations
+- English and Thai routes, including `/th/...`
+- Gallery carousel and external links such as YouTube
+
+### Content management
+
+- Admin dashboard for concerts, galleries, media, repertoire, news, events, artists, members, and alumni
+- Website controls for Home, About, Contact, navigation, social links, settings, drafts, and previews
+- Direct image upload to Supabase Storage from the admin area
+- JPG, PNG, and WebP uploads up to 20 MB; convert HEIC before uploading
+
+## Local development
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Commands
+Set these values in `.env.local`:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://pdomkhrzqviamzlfxcia.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+```
+
+Do not commit `.env.local`, passwords, Personal Access Tokens, or service-role keys. The publishable key is safe to expose in browser code because access is protected by Supabase RLS.
+
+## Quality checks
 
 ```bash
 npm run lint
@@ -19,10 +57,55 @@ npm run typecheck
 npm run build
 ```
 
-## Supabase foundation
+Run all three before committing a substantive change.
 
-The Phase 2 schema is in `supabase/migrations/`. It is version-controlled but has **not** been applied to the remote Supabase project.
+## Supabase
 
-Add the public project URL and anon key to `.env.local` to enable database reads. Until then, the website displays static fallback content.
+The project is linked to the `pgwinds-production` Supabase project (`pdomkhrzqviamzlfxcia`). All migrations in `supabase/migrations/` have been applied to the remote database.
 
-Admin authentication, user provisioning, and applying the migration to Supabase are deliberately deferred to the next approved steps.
+The schema includes content tables, media metadata, public-media Storage policies, admin audit logs, draft/published website content, navigation, social links, and localizations. RLS allows public read access only to the content intended for publication, while administrators can manage content.
+
+To inspect migration status:
+
+```bash
+npx supabase migration list
+```
+
+Create future schema changes as a new migration; do not edit an already-applied migration.
+
+### Add an administrator
+
+1. Create or invite the person in **Supabase Dashboard → Authentication → Users**.
+2. In **SQL Editor**, grant the role:
+
+```sql
+update auth.users
+set raw_app_meta_data =
+  coalesce(raw_app_meta_data, '{}'::jsonb)
+  || '{"pgwinds_role":"admin"}'::jsonb
+where lower(email) = lower('admin@example.com')
+returning email, raw_app_meta_data;
+```
+
+3. The user must sign out and sign in again at `/admin` to receive a new session with the role.
+
+Never place this role in `user_metadata`; the application and RLS policies use `app_metadata.pgwinds_role`.
+
+## Deployment workflow
+
+Vercel is connected to the `pgwinds/pgwinds` GitHub repository. Every push to `main` automatically creates a production deployment.
+
+```bash
+git add -A
+git commit -m "describe the change"
+git push origin main
+```
+
+Configure the same public Supabase environment variables in **Vercel → Project Settings → Environment Variables**. Verify the resulting deployment in the Vercel dashboard after each production change.
+
+## Repository rules
+
+- Work only in this repository: `pgwinds/pgwinds`.
+- Do not copy or connect code from `PGVIM-SchoolofMusic`.
+- Keep credentials out of Git.
+- Prefer admin-managed content over hard-coded content for information that changes regularly.
