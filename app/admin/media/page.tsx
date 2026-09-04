@@ -7,7 +7,7 @@ import { getAdminMediaAssets } from "@/lib/queries/admin-content";
 const uploadFeedback = {
   success: { status: "success" as const, message: "อัปโหลดรูปสำเร็จแล้ว สามารถนำไปใช้กับ Gallery, Logo หรือภาพพื้นหลังได้" },
   "invalid-file": { status: "error" as const, message: "ไฟล์นี้ไม่รองรับ กรุณาใช้ JPG, PNG หรือ WebP เท่านั้น (ไฟล์ HEIC ต้องแปลงก่อน)" },
-  "too-large": { status: "error" as const, message: "ไฟล์รูปต้องมีขนาดไม่เกิน 8 MB กรุณาลดขนาดก่อนอัปโหลด" },
+  "too-large": { status: "error" as const, message: "ไฟล์รูปต้องมีขนาดไม่เกิน 20 MB กรุณาลดขนาดก่อนอัปโหลด" },
   "missing-alt": { status: "error" as const, message: "กรุณากรอกคำอธิบายรูปภาพ (Alt text)" },
   "storage-error": { status: "error" as const, message: "อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" },
   "metadata-error": { status: "error" as const, message: "อัปโหลดไฟล์แล้ว แต่บันทึกข้อมูลรูปไม่สำเร็จ กรุณาลองใหม่" },
