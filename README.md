@@ -67,6 +67,10 @@ The project is linked to the `pgwinds-production` Supabase project (`pdomkhrzqvi
 
 The schema includes content tables, media metadata, public-media Storage policies, admin audit logs, draft/published website content, navigation, social links, and localizations. RLS allows public read access only to the content intended for publication, while administrators can manage content.
 
+### Free-plan backup procedure
+
+Use the manual, no-cost process in [Backup and restore runbook](docs/operations/backup-and-restore.md). Backups are intentionally kept outside this repository and must never be committed to GitHub.
+
 To inspect migration status:
 
 ```bash
