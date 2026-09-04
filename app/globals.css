@@ -33,6 +33,9 @@ h1 { font-size: clamp(3.3rem, 8vw, 7.4rem); } h2 { font-size: clamp(2.3rem, 4vw,
 
 .admin-locale-tabs { display: flex; gap: 8px; margin-top: 18px; }.admin-locale-tabs a { padding: 5px 9px; border: 1px solid var(--line); color: var(--moss); font-size: .75rem; font-weight: 800; }.admin-locale-tabs a.is-active { color: var(--paper); border-color: var(--moss); background: var(--moss); }
 
+.admin-note--wide, .admin-records--wide { max-width: 1040px; }.admin-inline-form { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-top: 18px; }.admin-inline-form label { display: grid; min-width: min(100%, 360px); gap: 7px; font-size: .84rem; font-weight: 700; }.admin-inline-form input { width: 100%; padding: 11px 12px; border: 1px solid var(--line); color: var(--ink); background: var(--paper); font: inherit; }.administrator-record form { margin: 0; }.administrator-record .admin-text-button { margin: 0; }
+@media (max-width: 700px) { .admin-inline-form { align-items: stretch; }.admin-inline-form label { min-width: 100%; }.admin-inline-form .button { width: 100%; } }
+
 /* PGVIM identity: turquoise for the Institute, gold for the School of Music. */
 .site-header { background: rgba(251,255,255,.94); }
 .hero { background: linear-gradient(135deg, var(--ink), var(--turquoise-deep)); }

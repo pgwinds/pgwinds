@@ -25,7 +25,7 @@ The public site is available to everyone. The `/admin` area is private and requi
 
 ### Content management
 
-- Admin dashboard for concerts, galleries, media, repertoire, news, events, artists, members, and alumni
+- Admin dashboard for concerts, galleries, media, repertoire, news, events, artists, members, alumni, and administrator roles
 - Website controls for Home, About, Contact, navigation, social links, settings, drafts, and previews
 - Direct image upload to Supabase Storage from the admin area
 - JPG, PNG, and WebP uploads up to 20 MB; convert HEIC before uploading
@@ -73,21 +73,13 @@ npx supabase migration list
 
 Create future schema changes as a new migration; do not edit an already-applied migration.
 
-### Add an administrator
+### Manage administrators
 
 1. Create or invite the person in **Supabase Dashboard → Authentication → Users**.
-2. In **SQL Editor**, grant the role:
+2. Open **`/admin/administrators`** and enter that account's email address.
+3. The user must sign out and sign in again at `/admin` to receive the role.
 
-```sql
-update auth.users
-set raw_app_meta_data =
-  coalesce(raw_app_meta_data, '{}'::jsonb)
-  || '{"pgwinds_role":"admin"}'::jsonb
-where lower(email) = lower('admin@example.com')
-returning email, raw_app_meta_data;
-```
-
-3. The user must sign out and sign in again at `/admin` to receive a new session with the role.
+The administrator screen lists current administrators, prevents self-removal, ensures at least one administrator remains, and writes role changes to the audit log.
 
 Never place this role in `user_metadata`; the application and RLS policies use `app_metadata.pgwinds_role`.
 
