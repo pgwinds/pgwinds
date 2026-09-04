@@ -1,7 +1,11 @@
 import type { Concert } from "@/types/content";
 
 export const navigation = [
-  { label: "About", href: "/about" }, { label: "Concerts", href: "/concerts" }, { label: "News", href: "/news" }, { label: "Gallery", href: "/gallery" }, { label: "Contact", href: "/contact" },
+  { label: "About", href: "/about" }, { label: "Concerts", href: "/concerts" }, { label: "Contact", href: "/contact" },
+];
+
+export const moreNavigation = [
+  { label: "Gallery", href: "/gallery" }, { label: "Artists", href: "/artists" }, { label: "Repertoire", href: "/repertoire" },
 ];
 
 export const pillars = [
@@ -15,7 +19,7 @@ export const featuredConcert: Concert = {
   slug: "a-new-season-awaits",
   title: "A new season awaits",
   displayDate: "Concert details coming soon",
-  venue: "Prince of Songkla University",
+  venue: "Princess Galyani Vadhana Institute of Music",
   description: "Our next chapter is taking shape. Watch this space for performance announcements.",
   startsAt: null,
   status: "published",

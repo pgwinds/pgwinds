@@ -10,7 +10,7 @@ export async function getPublicConcerts(): Promise<Concert[]> {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("concerts")
-      .select("id, slug, title, description, venue, display_date, starts_at, status, published_at")
+      .select("id, slug, title, description, venue, display_date, starts_at, status, published_at, cta_label, cta_url")
       .eq("status", "published")
       .order("starts_at", { ascending: true, nullsFirst: false });
 
@@ -26,6 +26,8 @@ export async function getPublicConcerts(): Promise<Concert[]> {
       startsAt: concert.starts_at as string | null,
       status: concert.status as Concert["status"],
       publishedAt: concert.published_at as string | null,
+      ctaLabel: concert.cta_label as string | null,
+      ctaUrl: concert.cta_url as string | null,
     }));
   } catch {
     return fallbackConcerts;

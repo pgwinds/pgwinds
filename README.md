@@ -1,6 +1,6 @@
 # PGWINDS
 
-The public website for Prince of Songkla University Wind Orchestra.
+The public website for Princess Galyani Vadhana Institute of Music Wind Symphony.
 
 ## Development
 

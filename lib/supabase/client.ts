@@ -3,7 +3,12 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { getSupabasePublicEnv } from "./env";
 
+let client: ReturnType<typeof createBrowserClient> | undefined;
+
 export function createClient() {
-  const { supabaseUrl, supabasePublishableKey } = getSupabasePublicEnv();
-  return createBrowserClient(supabaseUrl, supabasePublishableKey);
+  if (!client) {
+    const { supabaseUrl, supabasePublishableKey } = getSupabasePublicEnv();
+    client = createBrowserClient(supabaseUrl, supabasePublishableKey);
+  }
+  return client;
 }

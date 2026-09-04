@@ -1,4 +1,7 @@
-import Link from "next/link";
-import { navigation } from "@/lib/constants";
+import { NavigationClient } from "@/components/layout/navigation-client";
+import { getPublicNavigation } from "@/lib/queries/website";
 
-export function Navigation() { return <nav aria-label="Main navigation"><ul className="navigation">{navigation.map((item) => <li key={item.href}><Link href={item.href}>{item.label}</Link></li>)}</ul></nav>; }
+export async function Navigation() {
+  const items = await getPublicNavigation();
+  return <NavigationClient items={items} />;
+}

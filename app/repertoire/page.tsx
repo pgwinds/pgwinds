@@ -1,5 +1,6 @@
+import Link from "next/link";
+import { ContentCta } from "@/components/public/content-cta";
 import { PageHero } from "@/components/shared/page-hero";
-import { ContentList } from "@/components/public/content-list";
-import { getPublishedListings } from "@/lib/queries/programme";
+import { getPublicRepertoire } from "@/lib/queries/repertoire";
 export const metadata = { title: "Repertoire" };
-export default async function RepertoirePage() { return <><PageHero label="Repertoire" title="The music we bring to life." intro="Explore works from our growing repertoire." /><ContentList items={await getPublishedListings("repertoire")} empty="Our repertoire will be catalogued here soon." /></>; }
+export default async function RepertoirePage() { const items = await getPublicRepertoire(); return <><PageHero label="Repertoire" title="Music we carry with us." intro="Explore the pieces that shape the PGWINDS sound and revisit selected performances." /><section className="section"><div className="container">{items.length === 0 ? <div className="empty-state"><h2>Coming soon.</h2><p>Our repertoire portfolio will appear here soon.</p></div> : <div className="concert-list">{items.map((item) => <article className="concert-card" key={item.id}><p className="eyebrow">{[item.composer, item.arranger ? `arr. ${item.arranger}` : ""].filter(Boolean).join(" · ")}</p><h2><Link href={`/repertoire/${item.slug}`}>{item.title}</Link></h2>{item.instrumentation && <p className="concert-card__venue">{item.instrumentation}</p>}{item.notes && <p>{item.notes}</p>}<ContentCta label={item.youtubeUrl ? "Watch on YouTube" : null} url={item.youtubeUrl} /></article>)}</div>}</div></section></>; }
