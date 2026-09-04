@@ -59,6 +59,8 @@ npm run build
 
 Run all three before committing a substantive change.
 
+GitHub Actions runs the same checks automatically for every pull request and every push to `main`. It does not receive Supabase credentials; the build verifies that the public-site fallback remains safe when no environment variables are available.
+
 ## Supabase
 
 The project is linked to the `pgwinds-production` Supabase project (`pdomkhrzqviamzlfxcia`). All migrations in `supabase/migrations/` have been applied to the remote database.
