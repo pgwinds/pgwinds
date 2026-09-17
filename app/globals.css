@@ -92,3 +92,7 @@ h1 { font-size: clamp(3.3rem, 8vw, 7.4rem); } h2 { font-size: clamp(2.3rem, 4vw,
 @media (max-width: 700px) { .gallery-carousel__stage, .gallery-carousel__stage > img { min-height: 320px; height: 58vw; }.gallery-carousel__arrow { width: 36px; height: 36px; }.gallery-carousel__arrow--previous { left: 10px; }.gallery-carousel__arrow--next { right: 10px; }.gallery-carousel__meta { align-items: flex-start; flex-direction: column; }.gallery-carousel__thumbnails { max-width: 100%; width: 100%; } }
 
 .admin-media-preview img.admin-media-preview__crop { height: 320px; object-fit: cover; }
+
+/* Repertoire benefits from a wider reading and image canvas on large displays. */
+.repertoire-page .container { width: min(1480px, calc(100% - 64px)); }.repertoire-page .repertoire-card--with-cover { grid-template-columns: minmax(260px, 42%) minmax(0, 1fr); }
+@media (max-width: 700px) { .repertoire-page .container { width: min(100% - 32px, 1480px); } }

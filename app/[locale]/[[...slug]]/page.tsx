@@ -59,7 +59,7 @@ export default async function LocalizedPublicPage({ params }: { params: Promise<
   if (section === "repertoire") {
     const [items, appearance] = await Promise.all([getPublicRepertoire(), getPublishedCollectionAppearance("repertoire", locale)]);
     const coverUrls = await getPublicRepertoireCoverUrls(items.map((item) => item.coverMediaId));
-    return <><PageHero label={label} title={appearance.content.hero.title} intro={appearance.content.hero.intro} backgroundImageUrl={appearance.heroImageUrl} overlay={appearance.content.hero.overlay} /><section className="section"><div className="container"><RepertoireList items={items} coverUrls={coverUrls} emptyTitle={copy.empty.repertoireTitle} emptyBody={copy.empty.repertoire} hrefFor={(itemSlug) => localizedPath(`/repertoire/${itemSlug}`, locale)} watchLabel={copy.watchYouTube} /></div></section></>;
+    return <div className="repertoire-page"><PageHero label={label} title={appearance.content.hero.title} intro={appearance.content.hero.intro} backgroundImageUrl={appearance.heroImageUrl} overlay={appearance.content.hero.overlay} /><section className="section"><div className="container"><RepertoireList items={items} coverUrls={coverUrls} emptyTitle={copy.empty.repertoireTitle} emptyBody={copy.empty.repertoire} hrefFor={(itemSlug) => localizedPath(`/repertoire/${itemSlug}`, locale)} watchLabel={copy.watchYouTube} /></div></section></div>;
   }
   if (section === "archive") {
     const concerts = await getPublicConcerts();
