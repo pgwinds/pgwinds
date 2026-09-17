@@ -175,9 +175,11 @@ export async function registerUploadedMedia(input: UploadedMediaInput): Promise<
 export async function updateMedia(id: string, formData: FormData) {
   const altText = String(formData.get("altText") ?? "").trim();
   const caption = String(formData.get("caption") ?? "").trim();
+  const focalPoints: Record<string, [number, number]> = { "top-left": [0, 0], "top-center": [50, 0], "top-right": [100, 0], "center-left": [0, 50], center: [50, 50], "center-right": [100, 50], "bottom-left": [0, 100], "bottom-center": [50, 100], "bottom-right": [100, 100] };
+  const [focalX, focalY] = focalPoints[String(formData.get("focalPoint") ?? "center")] ?? focalPoints.center;
   if (!altText || altText.length > 500 || caption.length > 2000) throw new Error("Check the image description and caption.");
   const { user, supabase } = await getAdminClient();
-  const { error } = await supabase.from("media_assets").update({ alt_text: altText, caption: caption || null }).eq("id", id);
+  const { error } = await supabase.from("media_assets").update({ alt_text: altText, caption: caption || null, focal_x: focalX, focal_y: focalY }).eq("id", id);
   if (error) throw new Error("Could not update image details.");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.updated", entity_type: "media_asset", entity_id: id });
   revalidatePath("/", "layout"); revalidatePath("/gallery"); revalidatePath("/th/gallery"); revalidatePath("/repertoire"); revalidatePath("/admin/media");

@@ -39,12 +39,14 @@ export async function getPublicRepertoireCoverUrl(mediaId: string | null): Promi
   } catch { return null; }
 }
 
-export async function getPublicRepertoireCoverUrls(mediaIds: Array<string | null>): Promise<Record<string, string>> {
+export type RepertoireCover = { publicUrl: string; focalX: number; focalY: number };
+
+export async function getPublicRepertoireCoverUrls(mediaIds: Array<string | null>): Promise<Record<string, RepertoireCover>> {
   const ids = [...new Set(mediaIds.filter((id): id is string => Boolean(id)))];
   if (!isSupabaseConfigured || ids.length === 0) return {};
   try {
     const supabase = await createClient();
-    const { data } = await supabase.from("media_assets").select("id,bucket_id,object_path").in("id", ids);
-    return Object.fromEntries((data ?? []).map((asset) => [asset.id as string, supabase.storage.from(asset.bucket_id as string).getPublicUrl(asset.object_path as string).data.publicUrl]));
+    const { data } = await supabase.from("media_assets").select("id,bucket_id,object_path,focal_x,focal_y").in("id", ids);
+    return Object.fromEntries((data ?? []).map((asset) => [asset.id as string, { publicUrl: supabase.storage.from(asset.bucket_id as string).getPublicUrl(asset.object_path as string).data.publicUrl, focalX: (asset.focal_x as number | null) ?? 50, focalY: (asset.focal_y as number | null) ?? 50 }]));
   } catch { return {}; }
 }
