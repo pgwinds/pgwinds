@@ -16,5 +16,5 @@ export function NavigationClient({ items }: { items: NavigationItem[] }) {
   const locale = localeFromPath(usePathname());
   const mainItems = items.filter((item) => item.groupName === "main");
   const moreItems = items.filter((item) => item.groupName === "more");
-  return <nav aria-label="Main navigation"><ul className="navigation">{mainItems.map((item) => <li key={item.id}><NavigationLink item={item} /></li>)}{moreItems.length > 0 && <li><details className="more-menu"><summary>{moreLabel(locale)}</summary><ul>{moreItems.map((item) => <li key={item.id}><NavigationLink item={item} /></li>)}</ul></details></li>}</ul></nav>;
+  return <nav aria-label="Main navigation"><ul className="navigation">{mainItems.map((item) => <li className="navigation__inline navigation__inline--main" key={item.id}><NavigationLink item={item} /></li>)}{moreItems.map((item) => <li className="navigation__inline navigation__inline--secondary" key={item.id}><NavigationLink item={item} /></li>)}{items.length > 0 && <li className="navigation__overflow"><details className="more-menu"><summary>{moreLabel(locale)}</summary><ul>{mainItems.map((item) => <li className="more-menu__main" key={`more-main-${item.id}`}><NavigationLink item={item} /></li>)}{moreItems.map((item) => <li key={`more-secondary-${item.id}`}><NavigationLink item={item} /></li>)}</ul></details></li>}</ul></nav>;
 }

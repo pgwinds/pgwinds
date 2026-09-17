@@ -55,6 +55,19 @@ export const defaultAboutContent: AboutContent = { hero: { title: "More than an 
 export const aboutEditorSchema = z.object({ heroTitle: z.string().trim().min(1).max(240), heroIntro: z.string().trim().max(1000), heroMediaId: optionalMediaId, heroOverlay: z.coerce.number().min(0).max(90), historyHeading: z.string().trim().min(1).max(120), historyBody: z.string().trim().max(6000), philosophyHeading: z.string().trim().min(1).max(120), philosophyBody: z.string().trim().max(6000), instituteHeading: z.string().trim().min(1).max(120), instituteBody: z.string().trim().max(6000) });
 export function toAboutContent(input: z.infer<typeof aboutEditorSchema>): AboutContent { return { hero: { title: input.heroTitle, intro: input.heroIntro, mediaId: input.heroMediaId ?? null, overlay: input.heroOverlay }, history: { heading: input.historyHeading, body: input.historyBody }, philosophy: { heading: input.philosophyHeading, body: input.philosophyBody }, institute: { heading: input.instituteHeading, body: input.instituteBody } }; }
 
+// Shared hero settings for collection pages. The collection itself remains managed
+// in its own Admin area; this only controls the public page introduction.
+export const collectionAppearanceSchema = z.object({
+  hero: z.object({ title: z.string().trim().min(1).max(240), intro: z.string().trim().max(1000), mediaId: z.string().uuid().nullable(), overlay: z.number().min(0).max(90) }),
+});
+export type CollectionAppearance = z.infer<typeof collectionAppearanceSchema>;
+export const collectionAppearanceEditorSchema = z.object({
+  heroTitle: z.string().trim().min(1).max(240), heroIntro: z.string().trim().max(1000), heroMediaId: optionalMediaId, heroOverlay: z.coerce.number().min(0).max(90),
+});
+export function toCollectionAppearance(input: z.infer<typeof collectionAppearanceEditorSchema>): CollectionAppearance {
+  return { hero: { title: input.heroTitle, intro: input.heroIntro, mediaId: input.heroMediaId ?? null, overlay: input.heroOverlay } };
+}
+
 export const contactContentSchema = z.object({ hero: z.object({ title: z.string().trim().min(1).max(240), intro: z.string().trim().max(1000) }), email: z.string().trim().email().nullable(), phone: z.string().trim().max(80).nullable(), address: z.string().trim().max(1000).nullable() });
 export type ContactContent = z.infer<typeof contactContentSchema>;
 export const defaultContactContent: ContactContent = { hero: { title: "Let’s make music happen.", intro: "For performance invitations, collaborations, and general enquiries, get in touch." }, email: null, phone: null, address: "Princess Galyani Vadhana Institute of Music\nThailand" };

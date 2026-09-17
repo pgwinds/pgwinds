@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { getAdminUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Locale } from "@/lib/i18n/shared";
-import { aboutEditorSchema, contactEditorSchema, homeEditorSchema, navigationItemSchema, siteSettingsEditorSchema, socialLinkSchema, toAboutContent, toContactContent, toHomeContent, toSiteSettingsContent } from "@/lib/validations/website";
+import { aboutEditorSchema, collectionAppearanceEditorSchema, contactEditorSchema, homeEditorSchema, navigationItemSchema, siteSettingsEditorSchema, socialLinkSchema, toAboutContent, toCollectionAppearance, toContactContent, toHomeContent, toSiteSettingsContent } from "@/lib/validations/website";
+import { collectionAppearancePages, type CollectionAppearancePage } from "@/lib/queries/website";
 
 async function getAdminClient() {
   const user = await getAdminUser();
@@ -69,6 +70,36 @@ export async function saveAboutDraft(formData: FormData) { const input = aboutEd
 export async function publishAboutContent(formData: FormData) { const input = aboutEditorSchema.parse(Object.fromEntries(formData)); await savePageContent("about", { ...toAboutContent(input), locale: localeFromForm(formData) }, true); }
 export async function saveContactDraft(formData: FormData) { const input = contactEditorSchema.parse(Object.fromEntries(formData)); await savePageContent("contact", { ...toContactContent(input), locale: localeFromForm(formData) }, false); }
 export async function publishContactContent(formData: FormData) { const input = contactEditorSchema.parse(Object.fromEntries(formData)); await savePageContent("contact", { ...toContactContent(input), locale: localeFromForm(formData) }, true); }
+
+function collectionPageKey(formData: FormData): CollectionAppearancePage {
+  const pageKey = formData.get("pageKey");
+  if (!collectionAppearancePages.includes(pageKey as CollectionAppearancePage)) throw new Error("This page appearance cannot be edited.");
+  return pageKey as CollectionAppearancePage;
+}
+
+async function saveCollectionAppearance(formData: FormData, publish: boolean) {
+  const pageKey = collectionPageKey(formData);
+  const input = collectionAppearanceEditorSchema.parse(Object.fromEntries(formData));
+  const locale = localeFromForm(formData);
+  const content = toCollectionAppearance(input);
+  const { user, supabase } = await getAdminClient();
+  const localData = locale === "th" ? { page_key: pageKey, locale, content } : { page_key: pageKey, content };
+  const conflict = locale === "th" ? "page_key,locale" : "page_key";
+  const { error: draftError } = await supabase.from(pageContentTable(locale, true)).upsert(localData as never, { onConflict: conflict });
+  if (draftError) throw new Error(`Could not save the ${pageKey} appearance draft.`);
+  if (publish) {
+    const { error: publishError } = await supabase.from(pageContentTable(locale, false)).upsert({ ...localData, published_at: new Date().toISOString() } as never, { onConflict: conflict });
+    if (publishError) throw new Error(`Could not publish the ${pageKey} appearance.`);
+  }
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: publish ? `website.${pageKey}.appearance_published` : `website.${pageKey}.appearance_draft_saved`, entity_type: "page_content", metadata: { page_key: pageKey, locale } });
+  revalidatePath(`/${pageKey}`);
+  revalidatePath(`/th/${pageKey}`);
+  revalidatePath(`/admin/website/appearance/${pageKey}`);
+  redirect(`/admin/website/appearance/${pageKey}?locale=${locale}&status=${publish ? "published" : "draft"}`);
+}
+
+export async function saveCollectionAppearanceDraft(formData: FormData) { await saveCollectionAppearance(formData, false); }
+export async function publishCollectionAppearance(formData: FormData) { await saveCollectionAppearance(formData, true); }
 
 export async function createSocialLink(formData: FormData) {
   const input = socialLinkSchema.parse(Object.fromEntries(formData));

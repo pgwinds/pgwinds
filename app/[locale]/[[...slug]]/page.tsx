@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { AboutContentView } from "@/components/public/about-content";
 import { ContactContentView } from "@/components/public/contact-content";
@@ -6,13 +5,14 @@ import { ContentCta } from "@/components/public/content-cta";
 import { ContentList } from "@/components/public/content-list";
 import { GalleryContent } from "@/components/public/gallery-content";
 import { HomeContent } from "@/components/public/home-content";
+import { RepertoireList } from "@/components/public/repertoire-list";
 import { PageHero } from "@/components/shared/page-hero";
 import { getPublicConcerts } from "@/lib/queries/concerts";
 import { getPublicGalleries } from "@/lib/queries/galleries";
 import { isLocale, localizedPath, pageCopy, type Locale } from "@/lib/i18n";
 import { getPublishedListings } from "@/lib/queries/programme";
-import { getPublicRepertoire } from "@/lib/queries/repertoire";
-import { getPublishedAboutContent, getPublishedContactContent, getPublishedHomeContent, getPublicSocialLinks } from "@/lib/queries/website";
+import { getPublicRepertoire, getPublicRepertoireCoverUrls } from "@/lib/queries/repertoire";
+import { getPublishedAboutContent, getPublishedCollectionAppearance, getPublishedContactContent, getPublishedHomeContent, getPublicSocialLinks } from "@/lib/queries/website";
 
 const publicPages = ["concerts", "gallery", "artists", "repertoire", "news", "events", "members", "alumni", "archive"] as const;
 type PublicPage = (typeof publicPages)[number];
@@ -53,18 +53,23 @@ export default async function LocalizedPublicPage({ params }: { params: Promise<
     return <><PageHero label={label} title={title} intro={intro} /><section className="section"><div className="container concert-list">{concerts.map((concert) => <article className="concert-card" key={concert.id}><p className="eyebrow">{concert.displayDate}</p><h2>{concert.title}</h2><p>{concert.description}</p><p className="concert-card__venue">{concert.venue}</p><ContentCta label={concert.ctaLabel} url={concert.ctaUrl} /></article>)}</div></section></>;
   }
   if (section === "gallery") {
-    const galleries = await getPublicGalleries();
-    return <><PageHero label={label} title={title} intro={intro} /><GalleryContent galleries={galleries} emptyTitle={locale === "th" ? "ยังไม่มีแกลเลอรี" : "No galleries yet."} emptyBody={locale === "th" ? "ภาพกิจกรรมจะปรากฏที่นี่เมื่อมีการเผยแพร่" : "New photographic stories will appear here once they are published."} /></>;
+    const [galleries, appearance] = await Promise.all([getPublicGalleries(), getPublishedCollectionAppearance("gallery", locale)]);
+    return <><PageHero label={label} title={appearance.content.hero.title} intro={appearance.content.hero.intro} backgroundImageUrl={appearance.heroImageUrl} overlay={appearance.content.hero.overlay} /><GalleryContent galleries={galleries} emptyTitle={locale === "th" ? "ยังไม่มีแกลเลอรี" : "No galleries yet."} emptyBody={locale === "th" ? "ภาพกิจกรรมจะปรากฏที่นี่เมื่อมีการเผยแพร่" : "New photographic stories will appear here once they are published."} /></>;
   }
   if (section === "repertoire") {
-    const items = await getPublicRepertoire();
-    return <><PageHero label={label} title={title} intro={intro} /><section className="section"><div className="container">{items.length === 0 ? <div className="empty-state"><h2>{copy.empty.repertoireTitle}</h2><p>{copy.empty.repertoire}</p></div> : <div className="concert-list">{items.map((item) => <article className="concert-card" key={item.id}><p className="eyebrow">{[item.composer, item.arranger ? `arr. ${item.arranger}` : ""].filter(Boolean).join(" · ")}</p><h2><Link href={localizedPath(`/repertoire/${item.slug}`, locale)}>{item.title}</Link></h2>{item.instrumentation && <p className="concert-card__venue">{item.instrumentation}</p>}{item.notes && <p>{item.notes}</p>}<ContentCta label={item.youtubeUrl ? copy.watchYouTube : null} url={item.youtubeUrl} /></article>)}</div>}</div></section></>;
+    const [items, appearance] = await Promise.all([getPublicRepertoire(), getPublishedCollectionAppearance("repertoire", locale)]);
+    const coverUrls = await getPublicRepertoireCoverUrls(items.map((item) => item.coverMediaId));
+    return <><PageHero label={label} title={appearance.content.hero.title} intro={appearance.content.hero.intro} backgroundImageUrl={appearance.heroImageUrl} overlay={appearance.content.hero.overlay} /><section className="section"><div className="container"><RepertoireList items={items} coverUrls={coverUrls} emptyTitle={copy.empty.repertoireTitle} emptyBody={copy.empty.repertoire} hrefFor={(itemSlug) => localizedPath(`/repertoire/${itemSlug}`, locale)} watchLabel={copy.watchYouTube} /></div></section></>;
   }
   if (section === "archive") {
     const concerts = await getPublicConcerts();
     return <><PageHero label={label} title={title} intro={intro} /><ContentList items={concerts.map((concert) => ({ id: concert.id, title: concert.title, summary: concert.description, meta: concert.displayDate }))} empty={copy.empty.archive} /></>;
   }
 
-  const programmeSection = section as "artists" | "news" | "events" | "members" | "alumni";
+  if (section === "artists") {
+    const [items, appearance] = await Promise.all([getPublishedListings("artists"), getPublishedCollectionAppearance("artists", locale)]);
+    return <><PageHero label={label} title={appearance.content.hero.title} intro={appearance.content.hero.intro} backgroundImageUrl={appearance.heroImageUrl} overlay={appearance.content.hero.overlay} /><ContentList items={items} empty={copy.empty.artists} /></>;
+  }
+  const programmeSection = section as "news" | "events" | "members" | "alumni";
   return <><PageHero label={label} title={title} intro={intro} /><ContentList items={await getPublishedListings(programmeSection)} empty={copy.empty[programmeSection]} /></>;
 }

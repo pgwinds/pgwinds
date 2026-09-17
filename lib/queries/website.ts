@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cache } from "react";
 import { localizeAboutContent, localizeContactContent, localizeHomeContent } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n/shared";
-import { aboutContentSchema, contactContentSchema, defaultAboutContent, defaultContactContent, defaultHomeContent, defaultSiteSettings, homeContentSchema, siteSettingsContentSchema, type AboutContent, type ContactContent, type HomeContent, type SiteSettingsContent } from "@/lib/validations/website";
+import { aboutContentSchema, collectionAppearanceSchema, contactContentSchema, defaultAboutContent, defaultContactContent, defaultHomeContent, defaultSiteSettings, homeContentSchema, siteSettingsContentSchema, type AboutContent, type CollectionAppearance, type ContactContent, type HomeContent, type SiteSettingsContent } from "@/lib/validations/website";
 
 export type HomeMediaUrls = { desktop: string | null; mobile: string | null; featured: string | null };
 
@@ -63,6 +63,50 @@ async function getPublicMediaUrl(mediaId: string | null) {
   const supabase = await createClient();
   const { data } = await supabase.from("media_assets").select("bucket_id,object_path").eq("id", mediaId).maybeSingle();
   return data ? supabase.storage.from(data.bucket_id as string).getPublicUrl(data.object_path as string).data.publicUrl : null;
+}
+
+export const collectionAppearancePages = ["gallery", "artists", "repertoire"] as const;
+export type CollectionAppearancePage = (typeof collectionAppearancePages)[number];
+
+function defaultCollectionAppearance(pageKey: CollectionAppearancePage, locale: Locale): CollectionAppearance {
+  const copy = locale === "th"
+    ? {
+        gallery: ["ช่วงเวลาในเสียงดนตรี", "ภาพของผู้คน การซ้อม และการแสดงเบื้องหลัง PGWINDS"],
+        artists: ["นักดนตรีที่เรายินดีต้อนรับ", "พบกับศิลปินผู้ร่วมแบ่งปันเวทีกับ PGWINDS"],
+        repertoire: ["ดนตรีที่เราเก็บไว้กับตัว", "สำรวจบทเพลงที่หล่อหลอมเสียงของ PGWINDS และย้อนชมการแสดงที่คัดสรร"],
+      }
+    : {
+        gallery: ["Moments in music.", "A glimpse of the people, practice, and performances behind PGWINDS."],
+        artists: ["Musicians we welcome.", "Meet the artists who share the stage with PGWINDS."],
+        repertoire: ["Music we carry with us.", "Explore the pieces that shape the PGWINDS sound and revisit selected performances."],
+      };
+  const [title, intro] = copy[pageKey];
+  return { hero: { title, intro, mediaId: null, overlay: 40 } };
+}
+
+export async function getPublishedCollectionAppearance(pageKey: CollectionAppearancePage, locale: Locale = "en"): Promise<{ content: CollectionAppearance; heroImageUrl: string | null }> {
+  const fallback = defaultCollectionAppearance(pageKey, locale);
+  if (!isSupabaseConfigured) return { content: fallback, heroImageUrl: null };
+  try {
+    const supabase = await createClient();
+    const table = locale === "th" ? "page_content_localizations" : "page_content";
+    let query = supabase.from(table).select("content").eq("page_key", pageKey);
+    if (locale === "th") query = query.eq("locale", "th");
+    const { data } = await query.maybeSingle();
+    const parsed = collectionAppearanceSchema.safeParse(data?.content);
+    const content = parsed.success ? parsed.data : fallback;
+    return { content, heroImageUrl: await getPublicMediaUrl(content.hero.mediaId) };
+  } catch { return { content: fallback, heroImageUrl: null }; }
+}
+
+export async function getAdminCollectionAppearance(pageKey: CollectionAppearancePage, locale: Locale = "en"): Promise<{ draft: CollectionAppearance; published: CollectionAppearance | null }> {
+  const fallback = defaultCollectionAppearance(pageKey, locale);
+  if (!isSupabaseConfigured) return { draft: fallback, published: null };
+  const [{ data: draft }, { data: published }] = await getPageVersions(pageKey, locale);
+  const publishedResult = collectionAppearanceSchema.safeParse(published?.content);
+  const draftResult = collectionAppearanceSchema.safeParse(draft?.content);
+  const publishedContent = publishedResult.success ? publishedResult.data : null;
+  return { draft: draftResult.success ? draftResult.data : publishedContent ?? fallback, published: publishedContent };
 }
 
 export async function getMediaPublicUrls(mediaIds: string[]): Promise<Record<string, string>> {
