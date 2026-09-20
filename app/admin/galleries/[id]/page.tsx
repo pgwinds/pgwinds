@@ -1,14 +1,12 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FormSubmitButton } from "@/components/admin/form-submit-button";
+import { GalleryImageManager } from "@/components/admin/gallery-image-manager";
 import { MediaPicker } from "@/components/admin/media-picker";
 import {
   addAlbumToGallery,
   addImageToGallery,
   deleteGallery,
-  moveGalleryImage,
-  removeImageFromGallery,
   updateGallery,
 } from "@/lib/actions/admin";
 import {
@@ -30,8 +28,8 @@ const imageFeedback = {
 };
 
 const orderFeedback = {
-  moved: { className: "admin-success", message: "อัปเดตลำดับรูปใน Gallery เรียบร้อยแล้ว" },
-  unchanged: { className: "admin-form-feedback is-error", message: "รูปนี้อยู่ต้นสุดหรือท้ายสุดของ Gallery แล้ว" },
+  saved: { className: "admin-success", message: "บันทึกลำดับรูปใน Gallery เรียบร้อยแล้ว" },
+  stale: { className: "admin-form-feedback is-error", message: "รายการรูปมีการเปลี่ยนแปลงจากที่เปิดไว้ กรุณารีเฟรชแล้วจัดลำดับใหม่" },
   error: { className: "admin-form-feedback is-error", message: "ไม่สามารถเปลี่ยนลำดับรูปได้ในขณะนี้ กรุณาลองใหม่" },
 };
 
@@ -144,36 +142,7 @@ export default async function EditGalleryPage({
         {images.length === 0 ? (
           <p className="admin-empty-copy">No images attached yet.</p>
         ) : (
-          <div className="admin-gallery-image-grid">
-            {images.map((image, index) => {
-              const removeAction = removeImageFromGallery.bind(null, gallery.id, image.galleryItemId);
-              const moveUpAction = moveGalleryImage.bind(null, gallery.id, image.galleryItemId, "up");
-              const moveDownAction = moveGalleryImage.bind(null, gallery.id, image.galleryItemId, "down");
-              return (
-                <article key={image.galleryItemId}>
-                  <Image src={image.publicUrl} alt={image.altText} width={640} height={480} />
-                  <div>
-                    <strong>{image.altText}</strong>
-                    {image.caption && <span>{image.caption}</span>}
-                    <div className="admin-gallery-image-order">
-                      <span>ลำดับ {index + 1} จาก {images.length}</span>
-                      <div>
-                        <form action={moveUpAction}>
-                          <FormSubmitButton className="admin-order-button" label="↑ ขึ้น" pendingLabel="กำลังย้าย…" disabled={index === 0} />
-                        </form>
-                        <form action={moveDownAction}>
-                          <FormSubmitButton className="admin-order-button" label="↓ ลง" pendingLabel="กำลังย้าย…" disabled={index === images.length - 1} />
-                        </form>
-                      </div>
-                    </div>
-                    <form action={removeAction}>
-                      <FormSubmitButton className="admin-text-button" label="Remove from gallery" pendingLabel="Removing…" />
-                    </form>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+          <GalleryImageManager galleryId={gallery.id} initialImages={images} />
         )}
       </section>
 

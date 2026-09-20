@@ -198,6 +198,57 @@ export async function moveGalleryImage(galleryId: string, galleryItemId: string,
   redirect(`/admin/galleries/${galleryId}?order=moved`);
 }
 
+export async function saveGalleryImageOrder(galleryId: string, formData: FormData) {
+  const rawOrder = String(formData.get("galleryItemIds") ?? "");
+  let galleryItemIds: string[];
+  try {
+    const parsed: unknown = JSON.parse(rawOrder);
+    if (!Array.isArray(parsed) || parsed.some((id) => typeof id !== "string" || !uuidPattern.test(id))) throw new Error("invalid order");
+    galleryItemIds = parsed;
+  } catch {
+    redirect(`/admin/galleries/${galleryId}?order=error`);
+  }
+  if (!uuidPattern.test(galleryId) || galleryItemIds.length === 0 || new Set(galleryItemIds).size !== galleryItemIds.length) redirect(`/admin/galleries/${galleryId}?order=error`);
+
+  const { user, supabase } = await getAdminClient();
+  const { data: items, error: itemsError } = await supabase
+    .from("gallery_items")
+    .select("id,position")
+    .eq("gallery_id", galleryId)
+    .order("position");
+  if (itemsError || !items) redirect(`/admin/galleries/${galleryId}?order=error`);
+
+  const currentIds = items.map((item) => item.id as string);
+  if (currentIds.length !== galleryItemIds.length || currentIds.some((id) => !galleryItemIds.includes(id))) redirect(`/admin/galleries/${galleryId}?order=stale`);
+
+  const maximumPosition = Math.max(...items.map((item) => item.position as number));
+  const setPositions = async (orderedIds: string[], startingAt: number) => Promise.all(
+    orderedIds.map((id, index) => supabase.from("gallery_items").update({ position: startingAt + ((index + 1) * 10) }).eq("id", id).eq("gallery_id", galleryId)),
+  );
+  const restoreOriginalOrder = async () => {
+    const recoveryStart = maximumPosition + ((items.length + 2) * 20);
+    await setPositions(currentIds, recoveryStart);
+    await Promise.all(items.map((item) => supabase.from("gallery_items").update({ position: item.position as number }).eq("id", item.id as string).eq("gallery_id", galleryId)));
+  };
+
+  const temporaryStart = maximumPosition + ((items.length + 1) * 10);
+  const temporaryResults = await setPositions(currentIds, temporaryStart);
+  if (temporaryResults.some((result) => result.error)) {
+    await restoreOriginalOrder();
+    redirect(`/admin/galleries/${galleryId}?order=error`);
+  }
+
+  const finalResults = await Promise.all(galleryItemIds.map((id, index) => supabase.from("gallery_items").update({ position: index * 10 }).eq("id", id).eq("gallery_id", galleryId)));
+  if (finalResults.some((result) => result.error)) {
+    await restoreOriginalOrder();
+    redirect(`/admin/galleries/${galleryId}?order=error`);
+  }
+
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "gallery.images_reordered", entity_type: "gallery", entity_id: galleryId, metadata: { gallery_item_ids: galleryItemIds } });
+  revalidatePath("/gallery"); revalidatePath("/th/gallery"); revalidatePath(`/admin/galleries/${galleryId}`);
+  redirect(`/admin/galleries/${galleryId}?order=saved`);
+}
+
 export async function createRepertoire(formData: FormData) {
   const input = repertoireSchema.parse(Object.fromEntries(formData));
   const { user, supabase } = await getAdminClient();
