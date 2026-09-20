@@ -7,6 +7,7 @@ import {
   addAlbumToGallery,
   addImageToGallery,
   deleteGallery,
+  moveGalleryImage,
   removeImageFromGallery,
   updateGallery,
 } from "@/lib/actions/admin";
@@ -28,12 +29,18 @@ const imageFeedback = {
   error: { className: "admin-form-feedback is-error", message: "ไม่สามารถเพิ่มรูปได้ในขณะนี้ กรุณาลองใหม่" },
 };
 
+const orderFeedback = {
+  moved: { className: "admin-success", message: "อัปเดตลำดับรูปใน Gallery เรียบร้อยแล้ว" },
+  unchanged: { className: "admin-form-feedback is-error", message: "รูปนี้อยู่ต้นสุดหรือท้ายสุดของ Gallery แล้ว" },
+  error: { className: "admin-form-feedback is-error", message: "ไม่สามารถเปลี่ยนลำดับรูปได้ในขณะนี้ กรุณาลองใหม่" },
+};
+
 export default async function EditGalleryPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ image?: string }>;
+  searchParams: Promise<{ image?: string; order?: string }>;
 }) {
   const { id } = await params;
   const [gallery, images, library, query] = await Promise.all([
@@ -53,6 +60,9 @@ export default async function EditGalleryPage({
   const availableMedia = library.assets.filter((asset) => !attachedMediaIds.has(asset.id));
   const feedback = query.image && query.image in imageFeedback
     ? imageFeedback[query.image as keyof typeof imageFeedback]
+    : null;
+  const orderMessage = query.order && query.order in orderFeedback
+    ? orderFeedback[query.order as keyof typeof orderFeedback]
     : null;
 
   return (
@@ -96,6 +106,7 @@ export default async function EditGalleryPage({
           <p>Only these attached images appear on the public Gallery page.</p>
         </header>
         {feedback && <p className={feedback.className}>{feedback.message}</p>}
+        {orderMessage && <p className={orderMessage.className}>{orderMessage.message}</p>}
 
         <form className="admin-editor" action={addImageAction}>
           {availableMedia.length === 0 ? (
@@ -134,14 +145,27 @@ export default async function EditGalleryPage({
           <p className="admin-empty-copy">No images attached yet.</p>
         ) : (
           <div className="admin-gallery-image-grid">
-            {images.map((image) => {
+            {images.map((image, index) => {
               const removeAction = removeImageFromGallery.bind(null, gallery.id, image.galleryItemId);
+              const moveUpAction = moveGalleryImage.bind(null, gallery.id, image.galleryItemId, "up");
+              const moveDownAction = moveGalleryImage.bind(null, gallery.id, image.galleryItemId, "down");
               return (
                 <article key={image.galleryItemId}>
                   <Image src={image.publicUrl} alt={image.altText} width={640} height={480} />
                   <div>
                     <strong>{image.altText}</strong>
                     {image.caption && <span>{image.caption}</span>}
+                    <div className="admin-gallery-image-order">
+                      <span>ลำดับ {index + 1} จาก {images.length}</span>
+                      <div>
+                        <form action={moveUpAction}>
+                          <FormSubmitButton className="admin-order-button" label="↑ ขึ้น" pendingLabel="กำลังย้าย…" disabled={index === 0} />
+                        </form>
+                        <form action={moveDownAction}>
+                          <FormSubmitButton className="admin-order-button" label="↓ ลง" pendingLabel="กำลังย้าย…" disabled={index === images.length - 1} />
+                        </form>
+                      </div>
+                    </div>
                     <form action={removeAction}>
                       <FormSubmitButton className="admin-text-button" label="Remove from gallery" pendingLabel="Removing…" />
                     </form>

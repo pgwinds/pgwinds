@@ -141,6 +141,63 @@ export async function removeImageFromGallery(galleryId: string, galleryItemId: s
   revalidatePath("/gallery"); revalidatePath("/th/gallery"); revalidatePath(`/admin/galleries/${galleryId}`); revalidatePath("/admin/media");
 }
 
+export async function moveGalleryImage(galleryId: string, galleryItemId: string, direction: "up" | "down") {
+  const { user, supabase } = await getAdminClient();
+  if (!uuidPattern.test(galleryId) || !uuidPattern.test(galleryItemId) || !["up", "down"].includes(direction)) {
+    redirect(`/admin/galleries/${galleryId}?order=error`);
+  }
+
+  const { data: items, error: itemsError } = await supabase
+    .from("gallery_items")
+    .select("id,position")
+    .eq("gallery_id", galleryId)
+    .order("position");
+  if (itemsError || !items) redirect(`/admin/galleries/${galleryId}?order=error`);
+
+  const currentIndex = items.findIndex((item) => item.id === galleryItemId);
+  const adjacentIndex = currentIndex + (direction === "up" ? -1 : 1);
+  const current = items[currentIndex];
+  const adjacent = items[adjacentIndex];
+  if (!current || !adjacent) redirect(`/admin/galleries/${galleryId}?order=unchanged`);
+
+  const currentPosition = current.position as number;
+  const adjacentPosition = adjacent.position as number;
+  const temporaryPosition = Math.max(...items.map((item) => item.position as number)) + 10;
+  const fail = () => redirect(`/admin/galleries/${galleryId}?order=error`);
+
+  const { error: liftError } = await supabase
+    .from("gallery_items")
+    .update({ position: temporaryPosition })
+    .eq("id", galleryItemId)
+    .eq("gallery_id", galleryId);
+  if (liftError) fail();
+
+  const { error: adjacentError } = await supabase
+    .from("gallery_items")
+    .update({ position: currentPosition })
+    .eq("id", adjacent.id)
+    .eq("gallery_id", galleryId);
+  if (adjacentError) {
+    await supabase.from("gallery_items").update({ position: currentPosition }).eq("id", galleryItemId).eq("gallery_id", galleryId);
+    fail();
+  }
+
+  const { error: placeError } = await supabase
+    .from("gallery_items")
+    .update({ position: adjacentPosition })
+    .eq("id", galleryItemId)
+    .eq("gallery_id", galleryId);
+  if (placeError) {
+    await supabase.from("gallery_items").update({ position: adjacentPosition }).eq("id", adjacent.id).eq("gallery_id", galleryId);
+    await supabase.from("gallery_items").update({ position: currentPosition }).eq("id", galleryItemId).eq("gallery_id", galleryId);
+    fail();
+  }
+
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "gallery.image_reordered", entity_type: "gallery", entity_id: galleryId, metadata: { gallery_item_id: galleryItemId, direction, from_position: currentPosition, to_position: adjacentPosition } });
+  revalidatePath("/gallery"); revalidatePath("/th/gallery"); revalidatePath(`/admin/galleries/${galleryId}`);
+  redirect(`/admin/galleries/${galleryId}?order=moved`);
+}
+
 export async function createRepertoire(formData: FormData) {
   const input = repertoireSchema.parse(Object.fromEntries(formData));
   const { user, supabase } = await getAdminClient();
