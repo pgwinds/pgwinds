@@ -164,8 +164,9 @@ export async function saveSocialLinkOrder(formData: FormData) {
 export async function createNavigationItem(formData: FormData) {
   const input = navigationItemSchema.parse(Object.fromEntries(formData));
   const { user, supabase } = await getAdminClient();
-  const position = await nextWebsitePosition(supabase, "navigation_items", input.groupName);
-  const { error } = await supabase.from("navigation_items").insert({ item_key: input.itemKey, label: input.label, href: input.href, group_name: input.groupName, visible: input.visible, position });
+  const groupName = "more";
+  const position = await nextWebsitePosition(supabase, "navigation_items", groupName);
+  const { error } = await supabase.from("navigation_items").insert({ item_key: input.itemKey, label: input.label, href: input.href, group_name: groupName, visible: input.visible, position });
   if (error) throw new Error(error.code === "23505" ? "This navigation key already exists." : "Could not create navigation item.");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "navigation_item.created", entity_type: "navigation_item", metadata: { item_key: input.itemKey } });
   revalidatePath("/", "layout"); revalidatePath("/admin/website/navigation");
@@ -174,7 +175,9 @@ export async function createNavigationItem(formData: FormData) {
 export async function updateNavigationItem(id: string, formData: FormData) {
   const input = navigationItemSchema.parse(Object.fromEntries(formData));
   const { user, supabase } = await getAdminClient();
-  const { error } = await supabase.from("navigation_items").update({ item_key: input.itemKey, label: input.label, href: input.href, group_name: input.groupName, visible: input.visible, position: input.position }).eq("id", id);
+  const { data: currentItem, error: currentItemError } = await supabase.from("navigation_items").select("group_name, position").eq("id", id).maybeSingle();
+  if (currentItemError || !currentItem) redirect("/admin/website/navigation?order=stale");
+  const { error } = await supabase.from("navigation_items").update({ item_key: input.itemKey, label: input.label, href: input.href, group_name: currentItem.group_name, visible: input.visible, position: currentItem.position }).eq("id", id);
   if (error) throw new Error(error.code === "23505" ? "This navigation key already exists." : "Could not update navigation item.");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "navigation_item.updated", entity_type: "navigation_item", entity_id: id, metadata: { item_key: input.itemKey } });
   revalidatePath("/", "layout"); revalidatePath("/admin/website/navigation");
@@ -200,6 +203,33 @@ export async function saveNavigationOrder(groupName: "main" | "more", formData: 
   const updates = await Promise.all(ids.map((id, index) => supabase.from("navigation_items").update({ position: (index + 1) * 10 }).eq("id", id).eq("group_name", groupName)));
   if (updates.some((result) => result.error)) redirect("/admin/website/navigation?order=error");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "navigation_item.reordered", entity_type: "navigation_item", metadata: { group_name: groupName, ids } });
+  revalidatePath("/", "layout"); revalidatePath("/admin/website/navigation");
+  redirect("/admin/website/navigation?order=saved");
+}
+
+export async function saveNavigationLayout(formData: FormData) {
+  const parseIds = (key: string) => {
+    try {
+      const parsed: unknown = JSON.parse(String(formData.get(key) ?? "[]"));
+      return Array.isArray(parsed) && parsed.every((id) => typeof id === "string" && uuidPattern.test(id)) && new Set(parsed).size === parsed.length ? parsed : null;
+    } catch { return null; }
+  };
+  const mainIds = parseIds("mainIds");
+  const moreIds = parseIds("moreIds");
+  if (!mainIds || !moreIds || mainIds.length > 3 || new Set([...mainIds, ...moreIds]).size !== mainIds.length + moreIds.length) redirect("/admin/website/navigation?order=error");
+
+  const { user, supabase } = await getAdminClient();
+  const { data, error } = await supabase.from("navigation_items").select("id");
+  const currentIds = (data ?? []).map((item) => item.id as string);
+  const submittedIds = [...mainIds, ...moreIds];
+  if (error || currentIds.length !== submittedIds.length || currentIds.some((id) => !submittedIds.includes(id))) redirect("/admin/website/navigation?order=stale");
+
+  const updates = await Promise.all([
+    ...mainIds.map((id, index) => supabase.from("navigation_items").update({ group_name: "main", position: (index + 1) * 10 }).eq("id", id)),
+    ...moreIds.map((id, index) => supabase.from("navigation_items").update({ group_name: "more", position: (index + 1) * 10 }).eq("id", id)),
+  ]);
+  if (updates.some((result) => result.error)) redirect("/admin/website/navigation?order=error");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "navigation_item.layout_changed", entity_type: "navigation_item", metadata: { main_ids: mainIds, more_ids: moreIds } });
   revalidatePath("/", "layout"); revalidatePath("/admin/website/navigation");
   redirect("/admin/website/navigation?order=saved");
 }
