@@ -292,6 +292,49 @@ export async function createMediaTag(formData: FormData) {
   revalidatePath("/admin/media");
 }
 
+export async function updateMediaAlbum(id: string, formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  if (!uuidPattern.test(id) || !name || name.length > 120 || description.length > 1000) redirect("/admin/media?organize=validation-error");
+  const { user, supabase } = await getAdminClient();
+  const { error } = await supabase.from("media_albums").update({ name, description: description || null }).eq("id", id);
+  if (error) redirect(`/admin/media?organize=${error.code === "23505" ? "duplicate-name" : "error"}`);
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.album_updated", entity_type: "media_album", entity_id: id, metadata: { name } });
+  revalidatePath("/admin/media");
+  redirect("/admin/media?organize=album-updated");
+}
+
+export async function deleteMediaAlbum(id: string) {
+  if (!uuidPattern.test(id)) redirect("/admin/media?organize=error");
+  const { user, supabase } = await getAdminClient();
+  const { data, error } = await supabase.from("media_albums").delete().eq("id", id).select("name").maybeSingle();
+  if (error || !data) redirect("/admin/media?organize=error");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.album_deleted", entity_type: "media_album", entity_id: id, metadata: { name: data.name as string } });
+  revalidatePath("/admin/media");
+  redirect("/admin/media?organize=album-deleted");
+}
+
+export async function updateMediaTag(id: string, formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  if (!uuidPattern.test(id) || !name || name.length > 60) redirect("/admin/media?organize=validation-error");
+  const { user, supabase } = await getAdminClient();
+  const { error } = await supabase.from("media_tags").update({ name }).eq("id", id);
+  if (error) redirect(`/admin/media?organize=${error.code === "23505" ? "duplicate-name" : "error"}`);
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.tag_updated", entity_type: "media_tag", entity_id: id, metadata: { name } });
+  revalidatePath("/admin/media");
+  redirect("/admin/media?organize=tag-updated");
+}
+
+export async function deleteMediaTag(id: string) {
+  if (!uuidPattern.test(id)) redirect("/admin/media?organize=error");
+  const { user, supabase } = await getAdminClient();
+  const { data, error } = await supabase.from("media_tags").delete().eq("id", id).select("name").maybeSingle();
+  if (error || !data) redirect("/admin/media?organize=error");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.tag_deleted", entity_type: "media_tag", entity_id: id, metadata: { name: data.name as string } });
+  revalidatePath("/admin/media");
+  redirect("/admin/media?organize=tag-deleted");
+}
+
 export async function addMediaToAlbum(formData: FormData) {
   const albumId = String(formData.get("albumId") ?? "").trim();
   const mediaAssetIds = mediaIdsFromForm(formData);
