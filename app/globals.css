@@ -114,3 +114,7 @@ h1 { font-size: clamp(3.3rem, 8vw, 7.4rem); } h2 { font-size: clamp(2.3rem, 4vw,
 /* Repertoire benefits from a wider reading and image canvas on large displays. */
 .repertoire-page .container { width: min(1480px, calc(100% - 64px)); }.repertoire-page .repertoire-card--with-cover { grid-template-columns: minmax(260px, 42%) minmax(0, 1fr); }
 @media (max-width: 700px) { .repertoire-page .container { width: min(100% - 32px, 1480px); }.repertoire-page .repertoire-card--with-cover { grid-template-columns: 1fr; }.repertoire-page .repertoire-card__cover { width: min(82vw, 300px); justify-self: center; } }
+
+/* Keep public Gallery collections within narrow screens and leave room for navigation. */
+.gallery-collections, .gallery-collection, .gallery-carousel, .gallery-carousel__stage, .gallery-carousel__meta { min-width: 0; max-width: 100%; }.gallery-carousel__stage > img { max-width: 100%; }
+@media (max-width: 700px) { .gallery-collection > header h2 { font-size: clamp(2rem, 11vw, 2.7rem); overflow-wrap: anywhere; }.gallery-carousel__stage, .gallery-carousel__stage > img { min-height: 0; height: max(190px, min(58vw, 48svh)); }.gallery-carousel__arrow { width: 34px; height: 34px; font-size: 1.1rem; }.gallery-carousel__meta { gap: 10px; padding: 11px 12px; }.gallery-carousel__thumbnails { gap: 6px; }.gallery-carousel__thumbnails button { width: 52px; height: 38px; } }
