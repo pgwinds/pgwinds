@@ -95,4 +95,4 @@ h1 { font-size: clamp(3.3rem, 8vw, 7.4rem); } h2 { font-size: clamp(2.3rem, 4vw,
 
 /* Repertoire benefits from a wider reading and image canvas on large displays. */
 .repertoire-page .container { width: min(1480px, calc(100% - 64px)); }.repertoire-page .repertoire-card--with-cover { grid-template-columns: minmax(260px, 42%) minmax(0, 1fr); }
-@media (max-width: 700px) { .repertoire-page .container { width: min(100% - 32px, 1480px); }.repertoire-page .repertoire-card--with-cover { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .repertoire-page .container { width: min(100% - 32px, 1480px); }.repertoire-page .repertoire-card--with-cover { grid-template-columns: 1fr; }.repertoire-page .repertoire-card__cover { width: min(82vw, 300px); justify-self: center; } }
