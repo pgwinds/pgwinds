@@ -86,6 +86,10 @@ export async function getAdminMediaLibrary(): Promise<AdminMediaLibrary> {
   return { assets: assets.map((asset) => ({ ...asset, albums: albumsByAsset.get(asset.id) ?? [], tags: tagsByAsset.get(asset.id) ?? [], usages: usagesByAsset.get(asset.id) ?? [] })), albums, tags, organizationAvailable };
 }
 
+export async function getAdminMediaPickerAssets() {
+  return (await getAdminMediaLibrary()).assets;
+}
+
 export async function getAdminMediaAsset(id: string): Promise<AdminMediaAsset | null> {
   return (await getAdminMediaAssets()).find((asset) => asset.id === id) ?? null;
 }

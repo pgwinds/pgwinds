@@ -3,7 +3,7 @@ import Link from "next/link";
 import { LocaleTabs } from "@/components/admin/locale-tabs";
 import { MediaPicker } from "@/components/admin/media-picker";
 import { publishCollectionAppearance, saveCollectionAppearanceDraft } from "@/lib/actions/website";
-import { getAdminMediaAssets } from "@/lib/queries/admin-content";
+import { getAdminMediaPickerAssets } from "@/lib/queries/admin-content";
 import { collectionAppearancePages, getAdminCollectionAppearance, type CollectionAppearancePage } from "@/lib/queries/website";
 import type { Locale } from "@/lib/i18n/shared";
 
@@ -19,7 +19,7 @@ export default async function CollectionAppearanceEditorPage({ params, searchPar
   if (!collectionAppearancePages.includes(page as CollectionAppearancePage)) notFound();
   const pageKey = page as CollectionAppearancePage;
   const locale: Locale = localeParam === "th" ? "th" : "en";
-  const [{ draft, published }, assets] = await Promise.all([getAdminCollectionAppearance(pageKey, locale), getAdminMediaAssets()]);
+  const [{ draft, published }, assets] = await Promise.all([getAdminCollectionAppearance(pageKey, locale), getAdminMediaPickerAssets()]);
   const name = pageNames[pageKey];
   const basePath = `/admin/website/appearance/${pageKey}`;
   const previewPath = locale === "th" ? `/preview/${pageKey}?locale=th` : `/preview/${pageKey}`;

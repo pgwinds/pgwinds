@@ -2,14 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MediaPicker } from "@/components/admin/media-picker";
 import { deleteRepertoire, updateRepertoire } from "@/lib/actions/admin";
-import { getAdminMediaAssets } from "@/lib/queries/admin-content";
+import { getAdminMediaPickerAssets } from "@/lib/queries/admin-content";
 import { getAdminRepertoireItem } from "@/lib/queries/repertoire";
 
 export const metadata = { title: "Edit Repertoire · Admin" };
 
 export default async function EditRepertoirePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [item, assets] = await Promise.all([getAdminRepertoireItem(id), getAdminMediaAssets()]);
+  const [item, assets] = await Promise.all([getAdminRepertoireItem(id), getAdminMediaPickerAssets()]);
   if (!item) notFound();
   const updateAction = updateRepertoire.bind(null, item.id);
   const deleteAction = deleteRepertoire.bind(null, item.id);
