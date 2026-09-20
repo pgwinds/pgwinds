@@ -14,6 +14,8 @@ async function getAdminClient() {
 }
 
 type PublishableTable = "concerts" | "galleries" | "news" | "events" | "artists" | "repertoire";
+export type ContentOrderScope = "concerts" | "galleries" | ProgrammeSection;
+const contentOrderScopes = new Set<ContentOrderScope>(["concerts", "galleries", "news", "events", "artists", "repertoire", "members", "alumni"]);
 
 async function publishedAtForUpdate(supabase: Awaited<ReturnType<typeof createClient>>, table: PublishableTable, id: string, status: "draft" | "published" | "archived") {
   if (status !== "published") return null;
@@ -29,6 +31,59 @@ function revalidateProgramme(section: ProgrammeSection) {
   if (section === "news" || section === "events" || section === "artists") revalidatePath(`/${section}/[slug]`, "page");
 }
 
+function revalidateContentOrder(scope: ContentOrderScope) {
+  if (scope === "concerts") {
+    revalidatePath("/"); revalidatePath("/concerts"); revalidatePath("/archive"); revalidatePath("/admin/concerts");
+    revalidatePath("/th/concerts"); revalidatePath("/th/archive");
+    return;
+  }
+  if (scope === "galleries") {
+    revalidatePath("/gallery"); revalidatePath("/th/gallery"); revalidatePath("/admin/galleries");
+    return;
+  }
+  if (scope === "repertoire") {
+    revalidatePath("/repertoire"); revalidatePath("/th/repertoire"); revalidatePath("/repertoire/[slug]", "page"); revalidatePath("/admin/repertoire");
+    return;
+  }
+  revalidateProgramme(scope);
+}
+
+function contentOrderAdminPath(scope: ContentOrderScope) {
+  return scope === "concerts" ? "/admin/concerts" : scope === "galleries" ? "/admin/galleries" : `/admin/${scope}`;
+}
+
+async function nextContentPosition(supabase: Awaited<ReturnType<typeof createClient>>, scope: ContentOrderScope) {
+  const { data, error } = await supabase.from(scope).select("position").order("position", { ascending: false }).limit(1).maybeSingle();
+  if (error) throw new Error("Could not prepare the content position.");
+  return ((data?.position as number | undefined) ?? 0) + 10;
+}
+
+export async function saveContentOrder(scope: ContentOrderScope, formData: FormData) {
+  const rawOrder = String(formData.get("contentIds") ?? "");
+  let contentIds: string[];
+  try {
+    const parsed: unknown = JSON.parse(rawOrder);
+    if (!Array.isArray(parsed) || parsed.some((id) => typeof id !== "string" || !uuidPattern.test(id))) throw new Error("invalid order");
+    contentIds = parsed;
+  } catch {
+    redirect(`${contentOrderAdminPath(scope)}?order=error`);
+  }
+  if (!contentOrderScopes.has(scope) || contentIds.length === 0 || new Set(contentIds).size !== contentIds.length) redirect(`${contentOrderAdminPath(scope)}?order=error`);
+
+  const { user, supabase } = await getAdminClient();
+  const { data: currentItems, error: currentError } = await supabase.from(scope).select("id,position").order("position").order("created_at");
+  if (currentError || !currentItems) redirect(`${contentOrderAdminPath(scope)}?order=error`);
+  const currentIds = currentItems.map((item) => item.id as string);
+  if (currentIds.length !== contentIds.length || currentIds.some((id) => !contentIds.includes(id))) redirect(`${contentOrderAdminPath(scope)}?order=stale`);
+
+  const updates = await Promise.all(contentIds.map((id, index) => supabase.from(scope).update({ position: (index + 1) * 10 }).eq("id", id)));
+  if (updates.some((result) => result.error)) redirect(`${contentOrderAdminPath(scope)}?order=error`);
+
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: `${scope}.reordered`, entity_type: scope, metadata: { content_ids: contentIds } });
+  revalidateContentOrder(scope);
+  redirect(`${contentOrderAdminPath(scope)}?order=saved`);
+}
+
 function ctaValues(input: { ctaLabel?: string; ctaUrl?: string }) {
   const url = input.ctaUrl?.trim() || null;
   return { cta_label: url ? input.ctaLabel?.trim() || "Learn more" : null, cta_url: url };
@@ -39,10 +94,11 @@ export async function createConcert(formData: FormData) {
   const cta = ctaValues(input);
   const { user, supabase } = await getAdminClient();
   const publishedAt = input.status === "published" ? new Date().toISOString() : null;
+  const position = await nextContentPosition(supabase, "concerts");
   const { error } = await supabase.from("concerts").insert({
     title: input.title, slug: input.slug, description: input.description, venue: input.venue,
     display_date: input.displayDate, starts_at: input.startsAt || null, status: input.status, published_at: publishedAt,
-    ...cta,
+    position, ...cta,
   });
   if (error) throw new Error("Could not create concert.");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "concert.created", entity_type: "concert" });
@@ -74,7 +130,8 @@ export async function createGallery(formData: FormData) {
   const input = gallerySchema.parse(Object.fromEntries(formData));
   const { user, supabase } = await getAdminClient();
   const publishedAt = input.status === "published" ? new Date().toISOString() : null;
-  const { error } = await supabase.from("galleries").insert({ title: input.title, slug: input.slug, description: input.description || null, status: input.status, published_at: publishedAt });
+  const position = await nextContentPosition(supabase, "galleries");
+  const { error } = await supabase.from("galleries").insert({ title: input.title, slug: input.slug, description: input.description || null, status: input.status, published_at: publishedAt, position });
   if (error) throw new Error("Could not create gallery.");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "gallery.created", entity_type: "gallery" });
   revalidatePath("/gallery"); revalidatePath("/admin/galleries");
@@ -272,7 +329,8 @@ export async function createRepertoire(formData: FormData) {
   const input = repertoireSchema.parse(Object.fromEntries(formData));
   const { user, supabase } = await getAdminClient();
   const publishedAt = input.status === "published" ? new Date().toISOString() : null;
-  const { error } = await supabase.from("repertoire").insert({ title: input.title, slug: input.slug, composer: input.composer || null, arranger: input.arranger || null, instrumentation: input.instrumentation || null, notes: input.notes || null, cover_media_id: input.coverMediaId || null, youtube_url: input.youtubeUrl || null, status: input.status, published_at: publishedAt });
+  const position = await nextContentPosition(supabase, "repertoire");
+  const { error } = await supabase.from("repertoire").insert({ title: input.title, slug: input.slug, composer: input.composer || null, arranger: input.arranger || null, instrumentation: input.instrumentation || null, notes: input.notes || null, cover_media_id: input.coverMediaId || null, youtube_url: input.youtubeUrl || null, status: input.status, published_at: publishedAt, position });
   if (error) throw new Error("Could not create repertoire item.");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "repertoire.created", entity_type: "repertoire" });
   revalidatePath("/repertoire"); revalidatePath("/admin/repertoire");
@@ -494,14 +552,15 @@ export async function createProgrammeItem(formData: FormData) {
   const cta = ctaValues(input);
   const { user, supabase } = await getAdminClient();
   const publishedAt = input.status === "published" ? new Date().toISOString() : null;
+  const position = await nextContentPosition(supabase, input.contentType);
   const slug = input.slug || input.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   let error: Error | null = null;
-  if (input.contentType === "news") ({ error } = await supabase.from("news").insert({ title: input.title, slug, excerpt: input.summary || "", body: input.summary || "", status: input.status, published_at: publishedAt, ...cta }));
-  if (input.contentType === "events") ({ error } = await supabase.from("events").insert({ title: input.title, slug, description: input.summary || "", venue: input.meta || null, starts_at: input.dateTime || null, status: input.status, published_at: publishedAt, ...cta }));
-  if (input.contentType === "artists") ({ error } = await supabase.from("artists").insert({ name: input.title, slug, biography: input.summary || "", status: input.status, published_at: publishedAt, ...cta }));
-  if (input.contentType === "repertoire") ({ error } = await supabase.from("repertoire").insert({ title: input.title, composer: input.meta || null, notes: input.summary || null, status: input.status }));
-  if (input.contentType === "members") ({ error } = await supabase.from("members").insert({ full_name: input.title, instrument: input.meta || null, biography: input.summary || null, status: input.status }));
-  if (input.contentType === "alumni") ({ error } = await supabase.from("alumni").insert({ full_name: input.title, instrument: input.meta || null, biography: input.summary || null, status: input.status }));
+  if (input.contentType === "news") ({ error } = await supabase.from("news").insert({ title: input.title, slug, excerpt: input.summary || "", body: input.summary || "", status: input.status, published_at: publishedAt, position, ...cta }));
+  if (input.contentType === "events") ({ error } = await supabase.from("events").insert({ title: input.title, slug, description: input.summary || "", venue: input.meta || null, starts_at: input.dateTime || null, status: input.status, published_at: publishedAt, position, ...cta }));
+  if (input.contentType === "artists") ({ error } = await supabase.from("artists").insert({ name: input.title, slug, biography: input.summary || "", status: input.status, published_at: publishedAt, position, ...cta }));
+  if (input.contentType === "repertoire") ({ error } = await supabase.from("repertoire").insert({ title: input.title, composer: input.meta || null, notes: input.summary || null, status: input.status, position }));
+  if (input.contentType === "members") ({ error } = await supabase.from("members").insert({ full_name: input.title, instrument: input.meta || null, biography: input.summary || null, status: input.status, position }));
+  if (input.contentType === "alumni") ({ error } = await supabase.from("alumni").insert({ full_name: input.title, instrument: input.meta || null, biography: input.summary || null, status: input.status, position }));
   if (error) throw new Error("Could not create content.");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: `${input.contentType}.created`, entity_type: input.contentType });
   revalidatePath(`/${input.contentType}`); revalidatePath(`/admin/${input.contentType}`);

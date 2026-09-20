@@ -2,25 +2,28 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import type { Concert, Gallery } from "@/types/content";
 
-export async function getAdminConcerts(): Promise<Concert[]> {
+export type AdminConcert = Concert & { position: number };
+export type AdminGallery = Gallery & { position: number };
+
+export async function getAdminConcerts(): Promise<AdminConcert[]> {
   if (!isSupabaseConfigured) return [];
   const supabase = await createClient();
-  const { data } = await supabase.from("concerts").select("id,slug,title,description,venue,display_date,starts_at,status,published_at,cta_label,cta_url").order("created_at", { ascending: false });
-  return (data ?? []).map((item) => ({ id: item.id as string, slug: item.slug as string, title: item.title as string, description: item.description as string, venue: item.venue as string, displayDate: item.display_date as string, startsAt: item.starts_at as string | null, status: item.status as Concert["status"], publishedAt: item.published_at as string | null, ctaLabel: item.cta_label as string | null, ctaUrl: item.cta_url as string | null }));
+  const { data } = await supabase.from("concerts").select("id,slug,title,description,venue,display_date,starts_at,status,published_at,cta_label,cta_url,position").order("position").order("created_at", { ascending: false });
+  return (data ?? []).map((item) => ({ id: item.id as string, slug: item.slug as string, title: item.title as string, description: item.description as string, venue: item.venue as string, displayDate: item.display_date as string, startsAt: item.starts_at as string | null, status: item.status as Concert["status"], publishedAt: item.published_at as string | null, ctaLabel: item.cta_label as string | null, ctaUrl: item.cta_url as string | null, position: item.position as number }));
 }
 
-export async function getAdminConcert(id: string): Promise<Concert | null> {
+export async function getAdminConcert(id: string): Promise<AdminConcert | null> {
   return (await getAdminConcerts()).find((concert) => concert.id === id) ?? null;
 }
 
-export async function getAdminGalleries(): Promise<Gallery[]> {
+export async function getAdminGalleries(): Promise<AdminGallery[]> {
   if (!isSupabaseConfigured) return [];
   const supabase = await createClient();
-  const { data } = await supabase.from("galleries").select("id,slug,title,description,status,published_at").order("created_at", { ascending: false });
-  return (data ?? []).map((item) => ({ id: item.id as string, slug: item.slug as string, title: item.title as string, description: item.description as string | null, status: item.status as Gallery["status"], publishedAt: item.published_at as string | null }));
+  const { data } = await supabase.from("galleries").select("id,slug,title,description,status,published_at,position").order("position").order("created_at", { ascending: false });
+  return (data ?? []).map((item) => ({ id: item.id as string, slug: item.slug as string, title: item.title as string, description: item.description as string | null, status: item.status as Gallery["status"], publishedAt: item.published_at as string | null, position: item.position as number }));
 }
 
-export async function getAdminGallery(id: string): Promise<Gallery | null> {
+export async function getAdminGallery(id: string): Promise<AdminGallery | null> {
   return (await getAdminGalleries()).find((gallery) => gallery.id === id) ?? null;
 }
 

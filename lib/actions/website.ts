@@ -16,6 +16,23 @@ async function getAdminClient() {
 
 function localeFromForm(formData: FormData): Locale { return formData.get("locale") === "th" ? "th" : "en"; }
 function pageContentTable(locale: Locale, draft: boolean) { if (locale === "en") return draft ? "page_content_drafts" : "page_content"; return draft ? "page_content_localization_drafts" : "page_content_localizations"; }
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function orderedIdsFromForm(formData: FormData) {
+  try {
+    const parsed: unknown = JSON.parse(String(formData.get("contentIds") ?? ""));
+    if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((id) => typeof id !== "string" || !uuidPattern.test(id)) || new Set(parsed).size !== parsed.length) return null;
+    return parsed;
+  } catch { return null; }
+}
+
+async function nextWebsitePosition(supabase: Awaited<ReturnType<typeof createClient>>, table: "social_links" | "navigation_items", groupName?: "main" | "more") {
+  let query = supabase.from(table).select("position").order("position", { ascending: false }).limit(1);
+  if (table === "navigation_items" && groupName) query = query.eq("group_name", groupName);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error("Could not prepare the display position.");
+  return ((data?.position as number | undefined) ?? 0) + 10;
+}
 
 async function saveHome(formData: FormData, publish: boolean) {
   const locale = localeFromForm(formData);
@@ -104,7 +121,8 @@ export async function publishCollectionAppearance(formData: FormData) { await sa
 export async function createSocialLink(formData: FormData) {
   const input = socialLinkSchema.parse(Object.fromEntries(formData));
   const { user, supabase } = await getAdminClient();
-  const { error } = await supabase.from("social_links").insert({ platform: input.platform, label: input.label || null, url: input.url, visible: input.visible, position: input.position });
+  const position = await nextWebsitePosition(supabase, "social_links");
+  const { error } = await supabase.from("social_links").insert({ platform: input.platform, label: input.label || null, url: input.url, visible: input.visible, position });
   if (error) throw new Error("Could not create social link.");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "social_link.created", entity_type: "social_link" });
   revalidatePath("/contact"); revalidatePath("/", "layout"); revalidatePath("/admin/website/social-links");
@@ -129,10 +147,25 @@ export async function deleteSocialLink(id: string) {
   redirect("/admin/website/social-links");
 }
 
+export async function saveSocialLinkOrder(formData: FormData) {
+  const ids = orderedIdsFromForm(formData);
+  if (!ids) redirect("/admin/website/social-links?order=error");
+  const { user, supabase } = await getAdminClient();
+  const { data, error } = await supabase.from("social_links").select("id").order("position");
+  const currentIds = (data ?? []).map((item) => item.id as string);
+  if (error || currentIds.length !== ids.length || currentIds.some((id) => !ids.includes(id))) redirect("/admin/website/social-links?order=stale");
+  const updates = await Promise.all(ids.map((id, index) => supabase.from("social_links").update({ position: (index + 1) * 10 }).eq("id", id)));
+  if (updates.some((result) => result.error)) redirect("/admin/website/social-links?order=error");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "social_link.reordered", entity_type: "social_link", metadata: { ids } });
+  revalidatePath("/contact"); revalidatePath("/", "layout"); revalidatePath("/admin/website/social-links");
+  redirect("/admin/website/social-links?order=saved");
+}
+
 export async function createNavigationItem(formData: FormData) {
   const input = navigationItemSchema.parse(Object.fromEntries(formData));
   const { user, supabase } = await getAdminClient();
-  const { error } = await supabase.from("navigation_items").insert({ item_key: input.itemKey, label: input.label, href: input.href, group_name: input.groupName, visible: input.visible, position: input.position });
+  const position = await nextWebsitePosition(supabase, "navigation_items", input.groupName);
+  const { error } = await supabase.from("navigation_items").insert({ item_key: input.itemKey, label: input.label, href: input.href, group_name: input.groupName, visible: input.visible, position });
   if (error) throw new Error(error.code === "23505" ? "This navigation key already exists." : "Could not create navigation item.");
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "navigation_item.created", entity_type: "navigation_item", metadata: { item_key: input.itemKey } });
   revalidatePath("/", "layout"); revalidatePath("/admin/website/navigation");
@@ -155,6 +188,20 @@ export async function deleteNavigationItem(id: string) {
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "navigation_item.deleted", entity_type: "navigation_item", entity_id: id });
   revalidatePath("/", "layout"); revalidatePath("/admin/website/navigation");
   redirect("/admin/website/navigation");
+}
+
+export async function saveNavigationOrder(groupName: "main" | "more", formData: FormData) {
+  const ids = orderedIdsFromForm(formData);
+  if (!ids || !["main", "more"].includes(groupName)) redirect("/admin/website/navigation?order=error");
+  const { user, supabase } = await getAdminClient();
+  const { data, error } = await supabase.from("navigation_items").select("id").eq("group_name", groupName).order("position");
+  const currentIds = (data ?? []).map((item) => item.id as string);
+  if (error || currentIds.length !== ids.length || currentIds.some((id) => !ids.includes(id))) redirect("/admin/website/navigation?order=stale");
+  const updates = await Promise.all(ids.map((id, index) => supabase.from("navigation_items").update({ position: (index + 1) * 10 }).eq("id", id).eq("group_name", groupName)));
+  if (updates.some((result) => result.error)) redirect("/admin/website/navigation?order=error");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "navigation_item.reordered", entity_type: "navigation_item", metadata: { group_name: groupName, ids } });
+  revalidatePath("/", "layout"); revalidatePath("/admin/website/navigation");
+  redirect("/admin/website/navigation?order=saved");
 }
 
 async function saveSiteSettings(formData: FormData, publish: boolean) {

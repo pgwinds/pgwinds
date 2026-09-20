@@ -20,8 +20,9 @@ export async function getPublicGalleries(): Promise<PublicGallery[]> {
     const supabase = await createClient();
     const { data: galleries, error: galleryError } = await supabase
       .from("galleries")
-      .select("id,slug,title,description,status,published_at")
+      .select("id,slug,title,description,status,published_at,position")
       .eq("status", "published")
+      .order("position")
       .order("published_at", { ascending: false });
     if (galleryError || !galleries?.length) return [];
 
