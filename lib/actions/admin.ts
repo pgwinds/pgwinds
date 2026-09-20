@@ -172,6 +172,77 @@ export async function registerUploadedMedia(input: UploadedMediaInput): Promise<
   return { ok: true, message: "อัปโหลดรูปสำเร็จแล้ว สามารถนำไปใช้กับ Gallery, Logo หรือภาพพื้นหลังได้" };
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function mediaIdsFromForm(formData: FormData) {
+  return [...new Set(formData.getAll("mediaAssetId").map(String).filter((id) => uuidPattern.test(id)))];
+}
+
+export async function createMediaAlbum(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  if (!name || name.length > 120 || description.length > 1000) throw new Error("Check the album name and description.");
+  const { user, supabase } = await getAdminClient();
+  const { error } = await supabase.from("media_albums").insert({ name, description: description || null });
+  if (error) throw new Error(error.code === "23505" ? "An album with this name already exists." : "Could not create the album.");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.album_created", entity_type: "media_album", metadata: { name } });
+  revalidatePath("/admin/media");
+}
+
+export async function createMediaTag(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name || name.length > 60) throw new Error("Check the tag name.");
+  const { user, supabase } = await getAdminClient();
+  const { error } = await supabase.from("media_tags").insert({ name });
+  if (error) throw new Error(error.code === "23505" ? "This tag already exists." : "Could not create the tag.");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.tag_created", entity_type: "media_tag", metadata: { name } });
+  revalidatePath("/admin/media");
+}
+
+export async function addMediaToAlbum(formData: FormData) {
+  const albumId = String(formData.get("albumId") ?? "").trim();
+  const mediaAssetIds = mediaIdsFromForm(formData);
+  if (!uuidPattern.test(albumId) || mediaAssetIds.length === 0) throw new Error("Choose an album and at least one image.");
+  const { user, supabase } = await getAdminClient();
+  const { error } = await supabase.from("media_album_items").upsert(mediaAssetIds.map((mediaAssetId) => ({ album_id: albumId, media_asset_id: mediaAssetId })), { onConflict: "album_id,media_asset_id", ignoreDuplicates: true });
+  if (error) throw new Error("Could not add the selected images to this album.");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.album_items_added", entity_type: "media_album", entity_id: albumId, metadata: { media_asset_ids: mediaAssetIds } });
+  revalidatePath("/admin/media");
+}
+
+export async function removeMediaFromAlbum(formData: FormData) {
+  const albumId = String(formData.get("albumId") ?? "").trim();
+  const mediaAssetIds = mediaIdsFromForm(formData);
+  if (!uuidPattern.test(albumId) || mediaAssetIds.length === 0) throw new Error("Choose an album and at least one image.");
+  const { user, supabase } = await getAdminClient();
+  const { error } = await supabase.from("media_album_items").delete().eq("album_id", albumId).in("media_asset_id", mediaAssetIds);
+  if (error) throw new Error("Could not remove the selected images from this album.");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.album_items_removed", entity_type: "media_album", entity_id: albumId, metadata: { media_asset_ids: mediaAssetIds } });
+  revalidatePath("/admin/media");
+}
+
+export async function addTagsToMedia(formData: FormData) {
+  const tagId = String(formData.get("tagId") ?? "").trim();
+  const mediaAssetIds = mediaIdsFromForm(formData);
+  if (!uuidPattern.test(tagId) || mediaAssetIds.length === 0) throw new Error("Choose a tag and at least one image.");
+  const { user, supabase } = await getAdminClient();
+  const { error } = await supabase.from("media_asset_tags").upsert(mediaAssetIds.map((mediaAssetId) => ({ tag_id: tagId, media_asset_id: mediaAssetId })), { onConflict: "media_asset_id,tag_id", ignoreDuplicates: true });
+  if (error) throw new Error("Could not tag the selected images.");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.tags_added", entity_type: "media_tag", entity_id: tagId, metadata: { media_asset_ids: mediaAssetIds } });
+  revalidatePath("/admin/media");
+}
+
+export async function removeTagsFromMedia(formData: FormData) {
+  const tagId = String(formData.get("tagId") ?? "").trim();
+  const mediaAssetIds = mediaIdsFromForm(formData);
+  if (!uuidPattern.test(tagId) || mediaAssetIds.length === 0) throw new Error("Choose a tag and at least one image.");
+  const { user, supabase } = await getAdminClient();
+  const { error } = await supabase.from("media_asset_tags").delete().eq("tag_id", tagId).in("media_asset_id", mediaAssetIds);
+  if (error) throw new Error("Could not remove this tag from the selected images.");
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.tags_removed", entity_type: "media_tag", entity_id: tagId, metadata: { media_asset_ids: mediaAssetIds } });
+  revalidatePath("/admin/media");
+}
+
 export async function updateMedia(id: string, formData: FormData) {
   const altText = String(formData.get("altText") ?? "").trim();
   const caption = String(formData.get("caption") ?? "").trim();

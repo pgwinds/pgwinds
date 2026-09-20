@@ -24,14 +24,66 @@ export async function getAdminGallery(id: string): Promise<Gallery | null> {
   return (await getAdminGalleries()).find((gallery) => gallery.id === id) ?? null;
 }
 
-export type AdminMediaAsset = { id: string; objectPath: string; altText: string; caption: string; mimeType: string; sizeBytes: number; focalX: number; focalY: number; publicUrl: string };
+export type AdminMediaAsset = { id: string; objectPath: string; altText: string; caption: string; mimeType: string; sizeBytes: number; focalX: number; focalY: number; publicUrl: string; createdAt: string };
 export type AdminGalleryImage = AdminMediaAsset & { galleryItemId: string; position: number };
+export type AdminMediaAlbum = { id: string; name: string; description: string };
+export type AdminMediaTag = { id: string; name: string };
+export type OrganizedMediaAsset = AdminMediaAsset & { albums: AdminMediaAlbum[]; tags: AdminMediaTag[]; usages: string[] };
+export type AdminMediaLibrary = { assets: OrganizedMediaAsset[]; albums: AdminMediaAlbum[]; tags: AdminMediaTag[]; organizationAvailable: boolean };
 
 export async function getAdminMediaAssets(): Promise<AdminMediaAsset[]> {
   if (!isSupabaseConfigured) return [];
   const supabase = await createClient();
-  const { data } = await supabase.from("media_assets").select("id,bucket_id,object_path,alt_text,caption,mime_type,size_bytes,focal_x,focal_y").order("created_at", { ascending: false });
-  return (data ?? []).map((item) => ({ id: item.id as string, objectPath: item.object_path as string, altText: item.alt_text as string, caption: (item.caption as string) ?? "", mimeType: item.mime_type as string, sizeBytes: item.size_bytes as number, focalX: (item.focal_x as number | null) ?? 50, focalY: (item.focal_y as number | null) ?? 50, publicUrl: supabase.storage.from(item.bucket_id as string).getPublicUrl(item.object_path as string).data.publicUrl }));
+  const { data } = await supabase.from("media_assets").select("id,bucket_id,object_path,alt_text,caption,mime_type,size_bytes,focal_x,focal_y,created_at").order("created_at", { ascending: false });
+  return (data ?? []).map((item) => ({ id: item.id as string, objectPath: item.object_path as string, altText: item.alt_text as string, caption: (item.caption as string) ?? "", mimeType: item.mime_type as string, sizeBytes: item.size_bytes as number, focalX: (item.focal_x as number | null) ?? 50, focalY: (item.focal_y as number | null) ?? 50, publicUrl: supabase.storage.from(item.bucket_id as string).getPublicUrl(item.object_path as string).data.publicUrl, createdAt: item.created_at as string }));
+}
+
+export async function getAdminMediaLibrary(): Promise<AdminMediaLibrary> {
+  const assets = await getAdminMediaAssets();
+  if (!isSupabaseConfigured) return { assets: [], albums: [], tags: [], organizationAvailable: false };
+  const supabase = await createClient();
+  const [albumsResult, tagsResult, albumItemsResult, tagItemsResult, galleryItemsResult, concertUsageResult, repertoireUsageResult, pageContentResult, pageContentDraftsResult, localizedContentResult, localizedContentDraftsResult] = await Promise.all([
+    supabase.from("media_albums").select("id,name,description").order("name"),
+    supabase.from("media_tags").select("id,name").order("name"),
+    supabase.from("media_album_items").select("album_id,media_asset_id"),
+    supabase.from("media_asset_tags").select("media_asset_id,tag_id"),
+    supabase.from("gallery_items").select("media_asset_id,gallery:galleries(title)"),
+    supabase.from("concerts").select("cover_media_id,title").not("cover_media_id", "is", null),
+    supabase.from("repertoire").select("cover_media_id,title").not("cover_media_id", "is", null),
+    supabase.from("page_content").select("page_key,content"),
+    supabase.from("page_content_drafts").select("page_key,content"),
+    supabase.from("page_content_localizations").select("page_key,locale,content"),
+    supabase.from("page_content_localization_drafts").select("page_key,locale,content"),
+  ]);
+
+  // A missing organization migration must never make the existing media library fail.
+  const organizationAvailable = !albumsResult.error && !tagsResult.error && !albumItemsResult.error && !tagItemsResult.error;
+  const albums = organizationAvailable ? (albumsResult.data ?? []).map((item) => ({ id: item.id as string, name: item.name as string, description: (item.description as string | null) ?? "" })) : [];
+  const tags = organizationAvailable ? (tagsResult.data ?? []).map((item) => ({ id: item.id as string, name: item.name as string })) : [];
+  const albumsById = new Map(albums.map((album) => [album.id, album]));
+  const tagsById = new Map(tags.map((tag) => [tag.id, tag]));
+  const albumsByAsset = new Map<string, AdminMediaAlbum[]>();
+  const tagsByAsset = new Map<string, AdminMediaTag[]>();
+  for (const item of organizationAvailable ? albumItemsResult.data ?? [] : []) {
+    const album = albumsById.get(item.album_id as string);
+    if (album) albumsByAsset.set(item.media_asset_id as string, [...(albumsByAsset.get(item.media_asset_id as string) ?? []), album]);
+  }
+  for (const item of organizationAvailable ? tagItemsResult.data ?? [] : []) {
+    const tag = tagsById.get(item.tag_id as string);
+    if (tag) tagsByAsset.set(item.media_asset_id as string, [...(tagsByAsset.get(item.media_asset_id as string) ?? []), tag]);
+  }
+  const usagesByAsset = new Map<string, string[]>();
+  const noteUsage = (mediaId: string | null, label: string) => {
+    if (mediaId) usagesByAsset.set(mediaId, [...(usagesByAsset.get(mediaId) ?? []), label]);
+  };
+  for (const item of galleryItemsResult.data ?? []) noteUsage(item.media_asset_id as string, `Gallery: ${((item.gallery as { title?: string } | null)?.title) ?? "collection"}`);
+  for (const item of concertUsageResult.data ?? []) noteUsage(item.cover_media_id as string, `Concert cover: ${item.title as string}`);
+  for (const item of repertoireUsageResult.data ?? []) noteUsage(item.cover_media_id as string, `Repertoire cover: ${item.title as string}`);
+  for (const record of [...(pageContentResult.data ?? []), ...(pageContentDraftsResult.data ?? []), ...(localizedContentResult.data ?? []), ...(localizedContentDraftsResult.data ?? [])]) {
+    const serialized = JSON.stringify(record.content);
+    for (const asset of assets) if (serialized.includes(`\"${asset.id}\"`)) noteUsage(asset.id, `Website: ${record.page_key as string}`);
+  }
+  return { assets: assets.map((asset) => ({ ...asset, albums: albumsByAsset.get(asset.id) ?? [], tags: tagsByAsset.get(asset.id) ?? [], usages: usagesByAsset.get(asset.id) ?? [] })), albums, tags, organizationAvailable };
 }
 
 export async function getAdminMediaAsset(id: string): Promise<AdminMediaAsset | null> {
@@ -44,7 +96,7 @@ export async function getAdminGalleryImages(galleryId: string): Promise<AdminGal
   const { data: items } = await supabase.from("gallery_items").select("id,media_asset_id,position").eq("gallery_id", galleryId).order("position");
   const mediaIds = (items ?? []).map((item) => item.media_asset_id as string);
   if (mediaIds.length === 0) return [];
-  const { data: assets } = await supabase.from("media_assets").select("id,bucket_id,object_path,alt_text,caption,mime_type,size_bytes,focal_x,focal_y").in("id", mediaIds);
+  const { data: assets } = await supabase.from("media_assets").select("id,bucket_id,object_path,alt_text,caption,mime_type,size_bytes,focal_x,focal_y,created_at").in("id", mediaIds);
   const assetsById = new Map((assets ?? []).map((asset) => [asset.id as string, asset]));
   return (items ?? []).flatMap((item) => {
     const asset = assetsById.get(item.media_asset_id as string);
@@ -61,6 +113,7 @@ export async function getAdminGalleryImages(galleryId: string): Promise<AdminGal
       focalX: (asset.focal_x as number | null) ?? 50,
       focalY: (asset.focal_y as number | null) ?? 50,
       publicUrl: supabase.storage.from(asset.bucket_id as string).getPublicUrl(asset.object_path as string).data.publicUrl,
+      createdAt: asset.created_at as string,
     }];
   });
 }
