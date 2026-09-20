@@ -274,17 +274,22 @@ export async function moveGalleryImage(galleryId: string, galleryItemId: string,
   redirect(`/admin/galleries/${galleryId}?order=moved`);
 }
 
-export async function saveGalleryImageOrder(galleryId: string, formData: FormData) {
+export async function saveGalleryImageChanges(galleryId: string, formData: FormData) {
   const rawOrder = String(formData.get("galleryItemIds") ?? "");
+  const rawRemoved = String(formData.get("removedGalleryItemIds") ?? "[]");
   let galleryItemIds: string[];
+  let removedGalleryItemIds: string[];
   try {
     const parsed: unknown = JSON.parse(rawOrder);
     if (!Array.isArray(parsed) || parsed.some((id) => typeof id !== "string" || !uuidPattern.test(id))) throw new Error("invalid order");
     galleryItemIds = parsed;
+    const removedParsed: unknown = JSON.parse(rawRemoved);
+    if (!Array.isArray(removedParsed) || removedParsed.some((id) => typeof id !== "string" || !uuidPattern.test(id))) throw new Error("invalid removals");
+    removedGalleryItemIds = removedParsed;
   } catch {
     redirect(`/admin/galleries/${galleryId}?order=error`);
   }
-  if (!uuidPattern.test(galleryId) || galleryItemIds.length === 0 || new Set(galleryItemIds).size !== galleryItemIds.length) redirect(`/admin/galleries/${galleryId}?order=error`);
+  if (!uuidPattern.test(galleryId) || new Set(galleryItemIds).size !== galleryItemIds.length || new Set(removedGalleryItemIds).size !== removedGalleryItemIds.length) redirect(`/admin/galleries/${galleryId}?order=error`);
 
   const { user, supabase } = await getAdminClient();
   const { data: items, error: itemsError } = await supabase
@@ -295,7 +300,8 @@ export async function saveGalleryImageOrder(galleryId: string, formData: FormDat
   if (itemsError || !items) redirect(`/admin/galleries/${galleryId}?order=error`);
 
   const currentIds = items.map((item) => item.id as string);
-  if (currentIds.length !== galleryItemIds.length || currentIds.some((id) => !galleryItemIds.includes(id))) redirect(`/admin/galleries/${galleryId}?order=stale`);
+  const submittedIds = [...galleryItemIds, ...removedGalleryItemIds];
+  if (currentIds.length !== submittedIds.length || new Set(submittedIds).size !== submittedIds.length || currentIds.some((id) => !submittedIds.includes(id))) redirect(`/admin/galleries/${galleryId}?order=stale`);
 
   const maximumPosition = Math.max(...items.map((item) => item.position as number));
   const setPositions = async (orderedIds: string[], startingAt: number) => Promise.all(
@@ -314,13 +320,23 @@ export async function saveGalleryImageOrder(galleryId: string, formData: FormDat
     redirect(`/admin/galleries/${galleryId}?order=error`);
   }
 
-  const finalResults = await Promise.all(galleryItemIds.map((id, index) => supabase.from("gallery_items").update({ position: index * 10 }).eq("id", id).eq("gallery_id", galleryId)));
-  if (finalResults.some((result) => result.error)) {
-    await restoreOriginalOrder();
-    redirect(`/admin/galleries/${galleryId}?order=error`);
+  if (galleryItemIds.length > 0) {
+    const finalResults = await Promise.all(galleryItemIds.map((id, index) => supabase.from("gallery_items").update({ position: index * 10 }).eq("id", id).eq("gallery_id", galleryId)));
+    if (finalResults.some((result) => result.error)) {
+      await restoreOriginalOrder();
+      redirect(`/admin/galleries/${galleryId}?order=error`);
+    }
   }
 
-  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "gallery.images_reordered", entity_type: "gallery", entity_id: galleryId, metadata: { gallery_item_ids: galleryItemIds } });
+  if (removedGalleryItemIds.length > 0) {
+    const { error: deleteError } = await supabase.from("gallery_items").delete().eq("gallery_id", galleryId).in("id", removedGalleryItemIds);
+    if (deleteError) {
+      await restoreOriginalOrder();
+      redirect(`/admin/galleries/${galleryId}?order=error`);
+    }
+  }
+
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "gallery.images_changed", entity_type: "gallery", entity_id: galleryId, metadata: { gallery_item_ids: galleryItemIds, removed_gallery_item_ids: removedGalleryItemIds } });
   revalidatePath("/gallery"); revalidatePath("/th/gallery"); revalidatePath(`/admin/galleries/${galleryId}`);
   redirect(`/admin/galleries/${galleryId}?order=saved`);
 }

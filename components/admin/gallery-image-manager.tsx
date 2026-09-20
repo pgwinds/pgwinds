@@ -3,15 +3,16 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import { FormSubmitButton } from "@/components/admin/form-submit-button";
-import { removeImageFromGallery, saveGalleryImageOrder } from "@/lib/actions/admin";
+import { saveGalleryImageChanges } from "@/lib/actions/admin";
 import type { AdminGalleryImage } from "@/lib/queries/admin-content";
 
 export function GalleryImageManager({ galleryId, initialImages }: { galleryId: string; initialImages: AdminGalleryImage[] }) {
   const [images, setImages] = useState(initialImages);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const initialOrder = useMemo(() => initialImages.map((image) => image.galleryItemId), [initialImages]);
-  const hasChanges = images.some((image, index) => image.galleryItemId !== initialOrder[index]);
-  const saveOrderAction = saveGalleryImageOrder.bind(null, galleryId);
+  const hasChanges = removedIds.size > 0 || images.some((image, index) => image.galleryItemId !== initialOrder[index]);
+  const saveOrderAction = saveGalleryImageChanges.bind(null, galleryId);
 
   function moveImage(index: number, offset: -1 | 1) {
     const destination = index + offset;
@@ -59,15 +60,29 @@ export function GalleryImageManager({ galleryId, initialImages }: { galleryId: s
   }
 
   function discardChanges() {
-    if (!window.confirm("ยกเลิกการเรียงลำดับที่ยังไม่ได้บันทึกใช่หรือไม่?")) return;
+    if (!window.confirm("ยกเลิกการจัดลำดับและการนำรูปออกที่ยังไม่ได้บันทึกใช่หรือไม่?")) return;
     setImages(initialImages);
+    setRemovedIds(new Set());
+    setSelectedIds(new Set());
+  }
+
+  function stageRemoval(galleryItemId: string) {
+    if (!window.confirm("นำรูปนี้ออกจาก Gallery หรือไม่? รูปจะยังไม่ถูกลบจริงจนกดบันทึกการเปลี่ยนแปลงทั้งหมด")) return;
+    setImages((current) => current.filter((image) => image.galleryItemId !== galleryItemId));
+    setRemovedIds((current) => new Set([...current, galleryItemId]));
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      next.delete(galleryItemId);
+      return next;
+    });
   }
 
   return (
     <>
       <form className="admin-gallery-order-save" action={saveOrderAction}>
         <input type="hidden" name="galleryItemIds" value={JSON.stringify(images.map((image) => image.galleryItemId))} />
-        <p>{hasChanges ? "จัดลำดับในหน้านี้แล้ว กดบันทึกลำดับทั้งหมดเมื่อเสร็จ" : "เลือกหลายรูปเพื่อเลื่อนเป็นกลุ่ม หรือกดขึ้น/ลงรายรูป แล้วบันทึกเพียงครั้งเดียว"}</p>
+        <input type="hidden" name="removedGalleryItemIds" value={JSON.stringify([...removedIds])} />
+        <p>{hasChanges ? `มีการเปลี่ยนแปลงแล้ว${removedIds.size > 0 ? ` และนำรูปออก ${removedIds.size} รูป` : ""} กดบันทึกการเปลี่ยนแปลงทั้งหมดเมื่อเสร็จ` : "เลือกหลายรูปเพื่อเลื่อนเป็นกลุ่ม หรือกดขึ้น/ลงรายรูป แล้วบันทึกเพียงครั้งเดียว"}</p>
         <div>
           <span className="admin-gallery-order-save__selection">เลือกแล้ว {selectedIds.size} รูป</span>
           <button
@@ -88,13 +103,12 @@ export function GalleryImageManager({ galleryId, initialImages }: { galleryId: s
             ↓ เลื่อนกลุ่มลง 1
           </button>
           {hasChanges && <button type="button" className="admin-text-button" onClick={discardChanges}>ยกเลิกการจัดลำดับ</button>}
-          <FormSubmitButton label="บันทึกลำดับทั้งหมด" pendingLabel="กำลังบันทึกลำดับ…" disabled={!hasChanges} />
+          <FormSubmitButton label="บันทึกการเปลี่ยนแปลงทั้งหมด" pendingLabel="กำลังบันทึก…" disabled={!hasChanges} />
         </div>
       </form>
 
       <div className="admin-gallery-image-grid">
         {images.map((image, index) => {
-          const removeAction = removeImageFromGallery.bind(null, galleryId, image.galleryItemId);
           return (
             <article key={image.galleryItemId}>
               <label className="admin-gallery-image-select">
@@ -117,9 +131,7 @@ export function GalleryImageManager({ galleryId, initialImages }: { galleryId: s
                     <button className="admin-order-button" type="button" onClick={() => moveImage(index, 1)} disabled={index === images.length - 1}>↓ ลง</button>
                   </div>
                 </div>
-                <form action={removeAction}>
-                  <FormSubmitButton className="admin-text-button" label="Remove from gallery" pendingLabel="Removing…" />
-                </form>
+                <button className="admin-text-button" type="button" onClick={() => stageRemoval(image.galleryItemId)}>Remove from gallery</button>
               </div>
             </article>
           );
