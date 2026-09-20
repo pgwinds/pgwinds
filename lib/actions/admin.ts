@@ -101,14 +101,33 @@ export async function deleteGallery(id: string) {
 }
 
 export async function addImageToGallery(galleryId: string, formData: FormData) {
-  const mediaAssetId = String(formData.get("mediaAssetId") ?? "").trim();
+  const mediaAssetIds = [...new Set(
+    formData
+      .getAll("mediaAssetId")
+      .map((value) => String(value).trim())
+      .filter((id) => uuidPattern.test(id)),
+  )];
   const { user, supabase } = await getAdminClient();
-  if (!uuidPattern.test(mediaAssetId)) redirect(`/admin/galleries/${galleryId}?image=select-required`);
-  const { data: latest, error: positionError } = await supabase.from("gallery_items").select("position").eq("gallery_id", galleryId).order("position", { ascending: false }).limit(1).maybeSingle();
+  if (mediaAssetIds.length === 0) redirect(`/admin/galleries/${galleryId}?image=select-required`);
+  const { data: existingItems, error: positionError } = await supabase
+    .from("gallery_items")
+    .select("media_asset_id,position")
+    .eq("gallery_id", galleryId)
+    .order("position", { ascending: false });
   if (positionError) redirect(`/admin/galleries/${galleryId}?image=error`);
-  const { error } = await supabase.from("gallery_items").insert({ gallery_id: galleryId, media_asset_id: mediaAssetId, position: ((latest?.position as number | undefined) ?? -10) + 10 });
-  if (error) redirect(`/admin/galleries/${galleryId}?image=${error.code === "23505" ? "already-added" : "error"}`);
-  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "gallery.image_added", entity_type: "gallery", entity_id: galleryId, metadata: { media_asset_id: mediaAssetId } });
+  const attachedIds = new Set((existingItems ?? []).map((item) => item.media_asset_id as string));
+  const newMediaIds = mediaAssetIds.filter((id) => !attachedIds.has(id));
+  if (newMediaIds.length === 0) redirect(`/admin/galleries/${galleryId}?image=already-added`);
+  const latestPosition = (existingItems?.[0]?.position as number | undefined) ?? -10;
+  const { error } = await supabase.from("gallery_items").insert(
+    newMediaIds.map((mediaAssetId, index) => ({
+      gallery_id: galleryId,
+      media_asset_id: mediaAssetId,
+      position: latestPosition + ((index + 1) * 10),
+    })),
+  );
+  if (error) redirect(`/admin/galleries/${galleryId}?image=error`);
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "gallery.images_added", entity_type: "gallery", entity_id: galleryId, metadata: { media_asset_ids: newMediaIds } });
   revalidatePath("/gallery"); revalidatePath("/th/gallery"); revalidatePath(`/admin/galleries/${galleryId}`); revalidatePath("/admin/media");
   redirect(`/admin/galleries/${galleryId}?image=added`);
 }

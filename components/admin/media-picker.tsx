@@ -18,6 +18,8 @@ type MediaPickerProps = {
   assets: MediaOption[];
   defaultValue: string | null;
   optional?: boolean;
+  /** Allows Gallery editors to attach several media assets in one submission. */
+  multiple?: boolean;
   /** Use in Gallery so a large media library is not shown until an album is chosen. */
   requireAlbumSelection?: boolean;
 };
@@ -28,14 +30,15 @@ export function MediaPicker({
   assets,
   defaultValue,
   optional = true,
+  multiple = false,
   requireAlbumSelection = false,
 }: MediaPickerProps) {
-  const [selectedId, setSelectedId] = useState(defaultValue ?? "");
+  const [selectedIds, setSelectedIds] = useState<string[]>(defaultValue ? [defaultValue] : []);
   const [query, setQuery] = useState("");
   const [album, setAlbum] = useState("");
   const [tag, setTag] = useState("");
 
-  const selected = assets.find((asset) => asset.id === selectedId);
+  const selected = assets.filter((asset) => selectedIds.includes(asset.id));
   const albums = useMemo(
     () => [...new Set(assets.flatMap((asset) => asset.albums?.map((item) => item.name) ?? []))].sort(),
     [assets],
@@ -63,15 +66,22 @@ export function MediaPicker({
 
   function selectAlbum(nextAlbum: string) {
     setAlbum(nextAlbum);
-    if (nextAlbum && selected && !selected.albums?.some((item) => item.name === nextAlbum)) {
-      setSelectedId("");
+    if (nextAlbum) {
+      setSelectedIds((current) => current.filter((id) => assets.find((asset) => asset.id === id)?.albums?.some((item) => item.name === nextAlbum)));
     }
+  }
+
+  function toggleSelection(id: string) {
+    setSelectedIds((current) => {
+      if (!multiple) return [id];
+      return current.includes(id) ? current.filter((selectedId) => selectedId !== id) : [...current, id];
+    });
   }
 
   return (
     <div className="admin-media-picker admin-editor__wide">
       <span>{label}</span>
-      <input type="hidden" name={name} value={selectedId} />
+      {selectedIds.map((id) => <input key={id} type="hidden" name={name} value={id} />)}
 
       <div className="admin-media-picker__controls">
         <input
@@ -80,8 +90,8 @@ export function MediaPicker({
           placeholder="ค้นหารูปจากชื่อหรือคำบรรยาย"
           aria-label={`ค้นหา ${label}`}
         />
-        {optional && selectedId && (
-          <button type="button" onClick={() => setSelectedId("")}>ล้างรูปที่เลือก</button>
+        {optional && selectedIds.length > 0 && (
+          <button type="button" onClick={() => setSelectedIds([])}>ล้างรูปที่เลือก</button>
         )}
       </div>
 
@@ -102,7 +112,11 @@ export function MediaPicker({
         </div>
       )}
 
-      {selected && <p className="admin-media-picker__selected">เลือกแล้ว: <strong>{selected.altText}</strong></p>}
+      {selected.length > 0 && (
+        <p className="admin-media-picker__selected">
+          {multiple ? <>เลือกแล้ว: <strong>{selected.length} รูป</strong></> : <>เลือกแล้ว: <strong>{selected[0].altText}</strong></>}
+        </p>
+      )}
 
       {needsAlbumSelection && !album ? (
         <p className="admin-media-picker__empty">เลือก Album ก่อน เพื่อแสดงรูปที่นำเข้า Gallery ได้</p>
@@ -114,9 +128,9 @@ export function MediaPicker({
                 key={asset.id}
                 type="button"
                 role="option"
-                aria-selected={asset.id === selectedId}
-                className={asset.id === selectedId ? "is-selected" : ""}
-                onClick={() => setSelectedId(asset.id)}
+                aria-selected={selectedIds.includes(asset.id)}
+                className={selectedIds.includes(asset.id) ? "is-selected" : ""}
+                onClick={() => toggleSelection(asset.id)}
               >
                 <Image src={asset.publicUrl} alt="" width={320} height={200} />
                 <span>{asset.altText}</span>

@@ -115,10 +115,11 @@ export default async function EditGalleryPage({
             <>
               <MediaPicker
                 name="mediaAssetId"
-                label="เลือกหนึ่งรูปจาก Media"
+                label="เลือกรูปจาก Media (เลือกได้หลายรูป)"
                 assets={availableMedia}
                 defaultValue={null}
                 optional={false}
+                multiple
                 requireAlbumSelection
               />
               <FormSubmitButton label="เพิ่มรูปที่เลือกเข้า Gallery" pendingLabel="กำลังเพิ่มรูป…" />
