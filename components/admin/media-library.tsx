@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { addMediaToAlbum, addTagsToMedia, createMediaAlbum, createMediaTag, removeMediaFromAlbum, removeTagsFromMedia } from "@/lib/actions/admin";
 import { FormSubmitButton } from "@/components/admin/form-submit-button";
 import type { AdminMediaAlbum, AdminMediaTag, OrganizedMediaAsset } from "@/lib/queries/admin-content";
@@ -29,6 +29,7 @@ function BulkAssignmentForm({ title, items, fieldName, addAction, removeAction, 
 }
 
 export function MediaLibrary({ assets, albums, tags, organizationAvailable }: { assets: OrganizedMediaAsset[]; albums: AdminMediaAlbum[]; tags: AdminMediaTag[]; organizationAvailable: boolean }) {
+  const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState("");
   const [albumId, setAlbumId] = useState("");
   const [tagId, setTagId] = useState("");
@@ -52,6 +53,9 @@ export function MediaLibrary({ assets, albums, tags, organizationAvailable }: { 
   const resetPage = (update: () => void) => { update(); setPage(1); };
   const toggleSelected = (id: string) => setSelectedIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const selectDisplayed = () => setSelectedIds((current) => new Set([...current, ...displayed.map((asset) => asset.id)]));
+
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return <section className="admin-media-library" aria-busy="true"><div className="admin-media-library__heading"><div><h2>คลังรูปภาพ</h2><p>กำลังเตรียมคลังรูปภาพ…</p></div></div></section>;
 
   return <section className="admin-media-library" aria-labelledby="uploaded-images-heading">
     <div className="admin-media-library__heading"><div><h2 id="uploaded-images-heading">คลังรูปภาพ</h2><p>{assets.length} รูป · แสดงครั้งละ {pageSize} รูป</p></div><Link href="/admin/media">ล้างตัวกรอง</Link></div>
