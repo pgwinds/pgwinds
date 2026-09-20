@@ -4,6 +4,7 @@ import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { registerUploadedMedia } from "@/lib/actions/admin";
 import { createClient } from "@/lib/supabase/client";
+import type { AdminMediaAlbum, AdminMediaTag } from "@/lib/queries/admin-content";
 
 const extensionToMimeType = new Map([["jpg", "image/jpeg"], ["jpeg", "image/jpeg"], ["png", "image/png"], ["webp", "image/webp"]]);
 const mimeTypeToExtension = new Map([["image/jpeg", "jpg"], ["image/jpg", "jpg"], ["image/pjpeg", "jpg"], ["image/png", "png"], ["image/x-png", "png"], ["image/webp", "webp"]]);
@@ -38,7 +39,7 @@ function itemId(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;
 }
 
-export function MediaUploadForm({ feedback }: { feedback: Feedback }) {
+export function MediaUploadForm({ feedback, albums, tags, organizationAvailable }: { feedback: Feedback; albums: AdminMediaAlbum[]; tags: AdminMediaTag[]; organizationAvailable: boolean }) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [submission, setSubmission] = useState<Feedback>(null);
@@ -82,6 +83,10 @@ export function MediaUploadForm({ feedback }: { feedback: Feedback }) {
     const formData = new FormData(event.currentTarget);
     const sharedAltText = String(formData.get("altText") ?? "").trim();
     const caption = String(formData.get("caption") ?? "").trim();
+    const albumId = String(formData.get("albumId") ?? "").trim();
+    const tagId = String(formData.get("tagId") ?? "").trim();
+    const selectedAlbum = albums.find((album) => album.id === albumId);
+    const selectedTag = tags.find((tag) => tag.id === tagId);
     if (sharedAltText.length > 500 || caption.length > 2000) {
       setSubmission({ status: "error", message: "คำอธิบายรูปหรือคำบรรยายยาวเกินกำหนด" });
       return;
@@ -108,7 +113,7 @@ export function MediaUploadForm({ feedback }: { feedback: Feedback }) {
           continue;
         }
 
-        const saved = await registerUploadedMedia({ objectPath, mimeType, sizeBytes: item.file.size, altText, caption });
+        const saved = await registerUploadedMedia({ objectPath, mimeType, sizeBytes: item.file.size, altText, caption, albumId, tagId });
         if (!saved.ok) {
           await supabase.storage.from("public-media").remove([objectPath]);
           failed += 1;
@@ -130,8 +135,9 @@ export function MediaUploadForm({ feedback }: { feedback: Feedback }) {
     // Begin a fresh batch after success; retain only failed files so the user can
     // review or remove them without consuming the next batch's allowance.
     setItems((current) => failed === 0 ? [] : current.filter((item) => item.status === "error"));
+    const organizationLabel = [selectedAlbum && `Album “${selectedAlbum.name}”`, selectedTag && `Tag #${selectedTag.name}`].filter(Boolean).join(" และ ");
     setSubmission(failed === 0
-      ? { status: "success", message: `อัปโหลดสำเร็จ ${successful} รูปแล้ว สามารถนำไปใช้กับ Gallery, Logo หรือภาพพื้นหลังได้` }
+      ? { status: "success", message: `อัปโหลดสำเร็จ ${successful} รูปแล้ว${organizationLabel ? ` และจัดเข้า${organizationLabel}` : ""} สามารถนำไปใช้กับ Gallery, Logo หรือภาพพื้นหลังได้` }
       : { status: "error", message: `อัปโหลดสำเร็จ ${successful} รูป และไม่สำเร็จ ${failed} รูป โปรดดูรายการด้านล่าง` });
     setPending(false);
   };
@@ -142,6 +148,7 @@ export function MediaUploadForm({ feedback }: { feedback: Feedback }) {
     <label className="admin-editor__wide">Choose or add images<input name="files" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple required={items.length === 0} disabled={pending} onChange={handleFileChange} aria-describedby="image-upload-help" /></label>
     <label className="admin-editor__wide">Alt text (optional)<input name="altText" disabled={pending} placeholder="เช่น Alumni Concert 2026" /></label>
     <label className="admin-editor__wide">Caption for this batch (optional)<textarea name="caption" rows={4} disabled={pending} /></label>
+    {organizationAvailable && (albums.length > 0 || tags.length > 0) && <fieldset className="admin-editor__wide admin-upload-organization" disabled={pending}><legend>จัดกลุ่มรูปชุดนี้ทันที (ไม่บังคับ)</legend><p>เมื่ออัปโหลดสำเร็จ รูปทุกรูปในชุดนี้จะเข้า Album หรือ Tag ที่เลือก คุณยังแก้ไขภายหลังได้จากคลังรูปด้านล่าง</p><div>{albums.length > 0 && <label>Album<select name="albumId" defaultValue=""><option value="">ไม่จัด Album ตอนนี้</option>{albums.map((album) => <option key={album.id} value={album.id}>{album.name}</option>)}</select></label>}{tags.length > 0 && <label>Tag<select name="tagId" defaultValue=""><option value="">ไม่ติด Tag ตอนนี้</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select></label>}</div></fieldset>}
     <p className="admin-editor__wide admin-help" id="image-upload-help">เลือกพร้อมกันได้สูงสุด {maxFilesPerBatch} รูป (บน Mac กด ⌘ หรือ Shift ค้างไว้) หรือเปิดตัวเลือกนี้ซ้ำเพื่อเพิ่มทีละรูปจนรวมครบ {maxFilesPerBatch} รูป รองรับ JPG, PNG และ WebP ขนาดไม่เกิน 20 MB ต่อรูป ระบบจะอัปโหลดเรียงทีละรูป หากรูปใดผิดพลาด รูปอื่นยังทำงานต่อได้</p>
     {items.length > 0 && <ul className="admin-editor__wide admin-upload-list" aria-live="polite">{items.map((item) => <li key={item.id} className={`is-${item.status}`}><span>{fileLabel(item.file)}</span><strong>{item.message ?? "พร้อมอัปโหลด"}</strong>{item.status === "ready" && <button type="button" className="admin-upload-list__remove" onClick={() => removeItem(item.id)} aria-label={`ลบ ${item.file.name} ออกจากรายการ`}>ลบ</button>}</li>)}</ul>}
     {shown && <p className={`admin-editor__wide admin-form-feedback is-${shown.status}`} role={shown.status === "error" ? "alert" : "status"}>{shown.message}</p>}

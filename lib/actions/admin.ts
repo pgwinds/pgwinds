@@ -232,22 +232,37 @@ const acceptedMediaTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const maxImageSizeBytes = 20 * 1024 * 1024;
 const managedObjectPath = /^uploads\/[0-9a-f-]{36}\.(jpg|png|webp)$/i;
 
-export type UploadedMediaInput = { objectPath: string; mimeType: string; sizeBytes: number; altText: string; caption: string };
+export type UploadedMediaInput = { objectPath: string; mimeType: string; sizeBytes: number; altText: string; caption: string; albumId?: string; tagId?: string };
 export type UploadedMediaResult = { ok: boolean; message: string };
 
 export async function registerUploadedMedia(input: UploadedMediaInput): Promise<UploadedMediaResult> {
   const altText = input.altText.trim();
   const caption = input.caption.trim();
+  const albumId = input.albumId?.trim() || null;
+  const tagId = input.tagId?.trim() || null;
   if (!managedObjectPath.test(input.objectPath) || !acceptedMediaTypes.has(input.mimeType)) return { ok: false, message: "รูปภาพนี้ไม่ผ่านการตรวจสอบ กรุณาลองอัปโหลดใหม่" };
   if (!Number.isInteger(input.sizeBytes) || input.sizeBytes <= 0 || input.sizeBytes > maxImageSizeBytes) return { ok: false, message: "ไฟล์รูปต้องมีขนาดไม่เกิน 20 MB" };
   if (!altText || altText.length > 500 || caption.length > 2000) return { ok: false, message: "กรุณาตรวจคำอธิบายรูปภาพและคำบรรยาย" };
+  if ((albumId && !uuidPattern.test(albumId)) || (tagId && !uuidPattern.test(tagId))) return { ok: false, message: "Album หรือ Tag ที่เลือกไม่ถูกต้อง กรุณาเลือกใหม่" };
 
   const { user, supabase } = await getAdminClient();
-  const { error } = await supabase.from("media_assets").insert({ bucket_id: "public-media", object_path: input.objectPath, mime_type: input.mimeType, size_bytes: input.sizeBytes, alt_text: altText, caption: caption || null, is_public: true });
-  if (error) return { ok: false, message: "บันทึกข้อมูลรูปไม่สำเร็จ กรุณาลองใหม่" };
-  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.uploaded", entity_type: "media_asset", metadata: { object_path: input.objectPath } });
+  const [albumResult, tagResult] = await Promise.all([
+    albumId ? supabase.from("media_albums").select("id").eq("id", albumId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    tagId ? supabase.from("media_tags").select("id").eq("id", tagId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+  ]);
+  if ((albumId && (albumResult.error || !albumResult.data)) || (tagId && (tagResult.error || !tagResult.data))) return { ok: false, message: "ไม่พบ Album หรือ Tag ที่เลือก กรุณารีเฟรชหน้าแล้วเลือกใหม่" };
+
+  const { data: media, error } = await supabase.from("media_assets").insert({ bucket_id: "public-media", object_path: input.objectPath, mime_type: input.mimeType, size_bytes: input.sizeBytes, alt_text: altText, caption: caption || null, is_public: true }).select("id").single();
+  if (error || !media) return { ok: false, message: "บันทึกข้อมูลรูปไม่สำเร็จ กรุณาลองใหม่" };
+
+  const assignments = await Promise.all([
+    albumId ? supabase.from("media_album_items").insert({ album_id: albumId, media_asset_id: media.id as string }) : Promise.resolve({ error: null }),
+    tagId ? supabase.from("media_asset_tags").insert({ tag_id: tagId, media_asset_id: media.id as string }) : Promise.resolve({ error: null }),
+  ]);
+  const organizationFailed = assignments.some((result) => result.error);
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "media.uploaded", entity_type: "media_asset", entity_id: media.id as string, metadata: { object_path: input.objectPath, album_id: albumId, tag_id: tagId, organization_failed: organizationFailed } });
   revalidatePath("/admin/media");
-  return { ok: true, message: "อัปโหลดรูปสำเร็จแล้ว สามารถนำไปใช้กับ Gallery, Logo หรือภาพพื้นหลังได้" };
+  return { ok: true, message: organizationFailed ? "อัปโหลดรูปสำเร็จ แต่จัด Album หรือ Tag ไม่สำเร็จ สามารถจัดจากคลังรูปด้านล่างได้" : "อัปโหลดรูปสำเร็จแล้ว สามารถนำไปใช้กับ Gallery, Logo หรือภาพพื้นหลังได้" };
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
