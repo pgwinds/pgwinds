@@ -102,14 +102,35 @@ export async function deleteGallery(id: string) {
 
 export async function addImageToGallery(galleryId: string, formData: FormData) {
   const mediaAssetId = String(formData.get("mediaAssetId") ?? "").trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(mediaAssetId)) throw new Error("Select an image from Media first.");
   const { user, supabase } = await getAdminClient();
+  if (!uuidPattern.test(mediaAssetId)) redirect(`/admin/galleries/${galleryId}?image=select-required`);
   const { data: latest, error: positionError } = await supabase.from("gallery_items").select("position").eq("gallery_id", galleryId).order("position", { ascending: false }).limit(1).maybeSingle();
-  if (positionError) throw new Error("Could not prepare the gallery image.");
+  if (positionError) redirect(`/admin/galleries/${galleryId}?image=error`);
   const { error } = await supabase.from("gallery_items").insert({ gallery_id: galleryId, media_asset_id: mediaAssetId, position: ((latest?.position as number | undefined) ?? -10) + 10 });
-  if (error) throw new Error(error.code === "23505" ? "This image is already in the gallery." : "Could not add the image to this gallery.");
+  if (error) redirect(`/admin/galleries/${galleryId}?image=${error.code === "23505" ? "already-added" : "error"}`);
   await supabase.from("audit_logs").insert({ actor_id: user.id, action: "gallery.image_added", entity_type: "gallery", entity_id: galleryId, metadata: { media_asset_id: mediaAssetId } });
   revalidatePath("/gallery"); revalidatePath("/th/gallery"); revalidatePath(`/admin/galleries/${galleryId}`); revalidatePath("/admin/media");
+  redirect(`/admin/galleries/${galleryId}?image=added`);
+}
+
+export async function addAlbumToGallery(galleryId: string, formData: FormData) {
+  const albumId = String(formData.get("albumId") ?? "").trim();
+  const { user, supabase } = await getAdminClient();
+  if (!uuidPattern.test(albumId)) redirect(`/admin/galleries/${galleryId}?image=album-required`);
+  const [{ data: albumItems, error: albumError }, { data: galleryItems, error: galleryError }] = await Promise.all([
+    supabase.from("media_album_items").select("media_asset_id").eq("album_id", albumId),
+    supabase.from("gallery_items").select("media_asset_id,position").eq("gallery_id", galleryId).order("position", { ascending: false }),
+  ]);
+  if (albumError || galleryError) redirect(`/admin/galleries/${galleryId}?image=error`);
+  const attachedIds = new Set((galleryItems ?? []).map((item) => item.media_asset_id as string));
+  const newMediaIds = (albumItems ?? []).map((item) => item.media_asset_id as string).filter((id) => !attachedIds.has(id));
+  if (newMediaIds.length === 0) redirect(`/admin/galleries/${galleryId}?image=album-empty`);
+  const latestPosition = (galleryItems?.[0]?.position as number | undefined) ?? -10;
+  const { error } = await supabase.from("gallery_items").insert(newMediaIds.map((mediaAssetId, index) => ({ gallery_id: galleryId, media_asset_id: mediaAssetId, position: latestPosition + ((index + 1) * 10) })));
+  if (error) redirect(`/admin/galleries/${galleryId}?image=error`);
+  await supabase.from("audit_logs").insert({ actor_id: user.id, action: "gallery.album_added", entity_type: "gallery", entity_id: galleryId, metadata: { album_id: albumId, media_asset_ids: newMediaIds } });
+  revalidatePath("/gallery"); revalidatePath("/th/gallery"); revalidatePath(`/admin/galleries/${galleryId}`); revalidatePath("/admin/media");
+  redirect(`/admin/galleries/${galleryId}?image=album-added`);
 }
 
 export async function removeImageFromGallery(galleryId: string, galleryItemId: string) {
