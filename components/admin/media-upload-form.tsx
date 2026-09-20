@@ -34,8 +34,8 @@ function defaultAltText(file: File) {
   return (fromName || "PGWINDS image").slice(0, 500);
 }
 
-function itemId(file: File, index: number) {
-  return `${file.name}-${file.size}-${file.lastModified}-${index}`;
+function itemId(file: File) {
+  return `${file.name}-${file.size}-${file.lastModified}`;
 }
 
 export function MediaUploadForm({ feedback }: { feedback: Feedback }) {
@@ -54,18 +54,23 @@ export function MediaUploadForm({ feedback }: { feedback: Feedback }) {
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     setSubmission(null);
-    if (files.length > maxFilesPerBatch) {
-      setItems([]);
-      setSelectionError(`เลือกได้สูงสุด ${maxFilesPerBatch} รูปต่อครั้ง กรุณาแบ่งเป็นหลายชุด`);
+    const knownIds = new Set(items.map((item) => item.id));
+    const additions = files.filter((file) => !knownIds.has(itemId(file)));
+    if (items.length + additions.length > maxFilesPerBatch) {
+      setSelectionError(`รวมแล้วเลือกได้สูงสุด ${maxFilesPerBatch} รูป กรุณาลบรูปที่ไม่ใช้ก่อน หรือแบ่งเป็นหลายชุด`);
       event.target.value = "";
       return;
     }
     setSelectionError(null);
-    setItems(files.map((file, index) => {
+    setItems((current) => [...current, ...additions.map((file) => {
       const details = getImageDetails(file);
-      return { id: itemId(file, index), file, details, status: "error" in details ? "error" : "ready", message: "error" in details ? details.error : null };
-    }));
+      return { id: itemId(file), file, details, status: ("error" in details ? "error" : "ready") as UploadStatus, message: "error" in details ? details.error : null };
+    })]);
+    // Allow the same picker to be opened again to add another image.
+    event.target.value = "";
   };
+
+  const removeItem = (id: string) => setItems((current) => current.filter((item) => item.id !== id));
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -122,6 +127,9 @@ export function MediaUploadForm({ feedback }: { feedback: Feedback }) {
 
     formRef.current?.reset();
     if (successful > 0) router.refresh();
+    // Begin a fresh batch after success; retain only failed files so the user can
+    // review or remove them without consuming the next batch's allowance.
+    setItems((current) => failed === 0 ? [] : current.filter((item) => item.status === "error"));
     setSubmission(failed === 0
       ? { status: "success", message: `อัปโหลดสำเร็จ ${successful} รูปแล้ว สามารถนำไปใช้กับ Gallery, Logo หรือภาพพื้นหลังได้` }
       : { status: "error", message: `อัปโหลดสำเร็จ ${successful} รูป และไม่สำเร็จ ${failed} รูป โปรดดูรายการด้านล่าง` });
@@ -131,11 +139,11 @@ export function MediaUploadForm({ feedback }: { feedback: Feedback }) {
   const shown = selectionError ? { status: "error" as const, message: selectionError } : submission ?? feedback;
 
   return <form className="admin-editor" onSubmit={handleSubmit} ref={formRef}>
-    <label className="admin-editor__wide">Images<input name="files" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple required disabled={pending} onChange={handleFileChange} aria-describedby="image-upload-help" /></label>
+    <label className="admin-editor__wide">Choose or add images<input name="files" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple required={items.length === 0} disabled={pending} onChange={handleFileChange} aria-describedby="image-upload-help" /></label>
     <label className="admin-editor__wide">Alt text (optional)<input name="altText" disabled={pending} placeholder="เช่น Alumni Concert 2026" /></label>
     <label className="admin-editor__wide">Caption for this batch (optional)<textarea name="caption" rows={4} disabled={pending} /></label>
-    <p className="admin-editor__wide admin-help" id="image-upload-help">เลือกได้สูงสุด {maxFilesPerBatch} รูปต่อครั้ง รองรับ JPG, PNG และ WebP ขนาดไม่เกิน 20 MB ต่อรูป ระบบจะอัปโหลดเรียงทีละรูป หากรูปใดผิดพลาด รูปอื่นยังทำงานต่อได้</p>
-    {items.length > 0 && <ul className="admin-editor__wide admin-upload-list" aria-live="polite">{items.map((item) => <li key={item.id} className={`is-${item.status}`}><span>{fileLabel(item.file)}</span><strong>{item.message ?? "พร้อมอัปโหลด"}</strong></li>)}</ul>}
+    <p className="admin-editor__wide admin-help" id="image-upload-help">เลือกพร้อมกันได้สูงสุด {maxFilesPerBatch} รูป (บน Mac กด ⌘ หรือ Shift ค้างไว้) หรือเปิดตัวเลือกนี้ซ้ำเพื่อเพิ่มทีละรูปจนรวมครบ {maxFilesPerBatch} รูป รองรับ JPG, PNG และ WebP ขนาดไม่เกิน 20 MB ต่อรูป ระบบจะอัปโหลดเรียงทีละรูป หากรูปใดผิดพลาด รูปอื่นยังทำงานต่อได้</p>
+    {items.length > 0 && <ul className="admin-editor__wide admin-upload-list" aria-live="polite">{items.map((item) => <li key={item.id} className={`is-${item.status}`}><span>{fileLabel(item.file)}</span><strong>{item.message ?? "พร้อมอัปโหลด"}</strong>{item.status === "ready" && <button type="button" className="admin-upload-list__remove" onClick={() => removeItem(item.id)} aria-label={`ลบ ${item.file.name} ออกจากรายการ`}>ลบ</button>}</li>)}</ul>}
     {shown && <p className={`admin-editor__wide admin-form-feedback is-${shown.status}`} role={shown.status === "error" ? "alert" : "status"}>{shown.message}</p>}
     <button className="button" type="submit" disabled={pending || readyItems.length === 0}>{pending ? "กำลังอัปโหลด…" : `อัปโหลด ${readyItems.length || ""} รูป`}</button>
   </form>;
