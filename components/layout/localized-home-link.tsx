@@ -7,5 +7,5 @@ import { localeFromPath, localizedPath } from "@/lib/i18n/shared";
 
 export function LocalizedHomeLink({ children, className, ariaLabel }: { children: ReactNode; className: string; ariaLabel: string }) {
   const locale = localeFromPath(usePathname());
-  return <Link className={className} href={localizedPath("/", locale)} aria-label={ariaLabel}>{children}</Link>;
+  return <Link className={className} href={localizedPath("/", locale)} aria-label={ariaLabel} style={{ cursor: "pointer" }}>{children}</Link>;
 }
