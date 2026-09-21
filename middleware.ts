@@ -7,7 +7,8 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   const locale = request.nextUrl.pathname.split("/")[1] === "th" ? "th" : "en";
   requestHeaders.set("x-pgwinds-locale", locale);
-  if (!url || !publishableKey) return NextResponse.next({ request: { headers: requestHeaders } });
+  const requiresSessionRefresh = request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/auth");
+  if (!url || !publishableKey || !requiresSessionRefresh) return NextResponse.next({ request: { headers: requestHeaders } });
 
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   const supabase = createServerClient(url, publishableKey, {
