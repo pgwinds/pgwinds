@@ -41,25 +41,18 @@ export async function getAdminMediaAssets(): Promise<AdminMediaAsset[]> {
   return (data ?? []).map((item) => ({ id: item.id as string, objectPath: item.object_path as string, altText: item.alt_text as string, caption: (item.caption as string) ?? "", mimeType: item.mime_type as string, sizeBytes: item.size_bytes as number, focalX: (item.focal_x as number | null) ?? 50, focalY: (item.focal_y as number | null) ?? 50, publicUrl: supabase.storage.from(item.bucket_id as string).getPublicUrl(item.object_path as string).data.publicUrl, createdAt: item.created_at as string }));
 }
 
-export async function getAdminMediaLibrary(): Promise<AdminMediaLibrary> {
-  const assets = await getAdminMediaAssets();
-  if (!isSupabaseConfigured) return { assets: [], albums: [], tags: [], organizationAvailable: false };
-  const supabase = await createClient();
-  const [albumsResult, tagsResult, albumItemsResult, tagItemsResult, galleryItemsResult, concertUsageResult, repertoireUsageResult, pageContentResult, pageContentDraftsResult, localizedContentResult, localizedContentDraftsResult] = await Promise.all([
+type MediaOrganization = Pick<AdminMediaLibrary, "albums" | "tags" | "organizationAvailable"> & {
+  albumsByAsset: Map<string, AdminMediaAlbum[]>;
+  tagsByAsset: Map<string, AdminMediaTag[]>;
+};
+
+async function getMediaOrganization(supabase: Awaited<ReturnType<typeof createClient>>): Promise<MediaOrganization> {
+  const [albumsResult, tagsResult, albumItemsResult, tagItemsResult] = await Promise.all([
     supabase.from("media_albums").select("id,name,description").order("name"),
     supabase.from("media_tags").select("id,name").order("name"),
     supabase.from("media_album_items").select("album_id,media_asset_id"),
     supabase.from("media_asset_tags").select("media_asset_id,tag_id"),
-    supabase.from("gallery_items").select("media_asset_id,gallery:galleries(title)"),
-    supabase.from("concerts").select("cover_media_id,title").not("cover_media_id", "is", null),
-    supabase.from("repertoire").select("cover_media_id,title").not("cover_media_id", "is", null),
-    supabase.from("page_content").select("page_key,content"),
-    supabase.from("page_content_drafts").select("page_key,content"),
-    supabase.from("page_content_localizations").select("page_key,locale,content"),
-    supabase.from("page_content_localization_drafts").select("page_key,locale,content"),
   ]);
-
-  // A missing organization migration must never make the existing media library fail.
   const organizationAvailable = !albumsResult.error && !tagsResult.error && !albumItemsResult.error && !tagItemsResult.error;
   const albums = organizationAvailable ? (albumsResult.data ?? []).map((item) => ({ id: item.id as string, name: item.name as string, description: (item.description as string | null) ?? "" })) : [];
   const tags = organizationAvailable ? (tagsResult.data ?? []).map((item) => ({ id: item.id as string, name: item.name as string })) : [];
@@ -75,6 +68,36 @@ export async function getAdminMediaLibrary(): Promise<AdminMediaLibrary> {
     const tag = tagsById.get(item.tag_id as string);
     if (tag) tagsByAsset.set(item.media_asset_id as string, [...(tagsByAsset.get(item.media_asset_id as string) ?? []), tag]);
   }
+  return { albums, tags, organizationAvailable, albumsByAsset, tagsByAsset };
+}
+
+function withMediaOrganization(assets: AdminMediaAsset[], organization: MediaOrganization, usagesByAsset = new Map<string, string[]>()) {
+  return assets.map((asset) => ({ ...asset, albums: organization.albumsByAsset.get(asset.id) ?? [], tags: organization.tagsByAsset.get(asset.id) ?? [], usages: usagesByAsset.get(asset.id) ?? [] }));
+}
+
+export async function getAdminMediaPickerLibrary(): Promise<Pick<AdminMediaLibrary, "assets" | "albums" | "tags" | "organizationAvailable">> {
+  const assets = await getAdminMediaAssets();
+  if (!isSupabaseConfigured) return { assets: [], albums: [], tags: [], organizationAvailable: false };
+  const organization = await getMediaOrganization(await createClient());
+  return { assets: withMediaOrganization(assets, organization), albums: organization.albums, tags: organization.tags, organizationAvailable: organization.organizationAvailable };
+}
+
+export async function getAdminMediaLibrary(): Promise<AdminMediaLibrary> {
+  const assets = await getAdminMediaAssets();
+  if (!isSupabaseConfigured) return { assets: [], albums: [], tags: [], organizationAvailable: false };
+  const supabase = await createClient();
+  const [organization, [galleryItemsResult, concertUsageResult, repertoireUsageResult, pageContentResult, pageContentDraftsResult, localizedContentResult, localizedContentDraftsResult]] = await Promise.all([
+    getMediaOrganization(supabase),
+    Promise.all([
+    supabase.from("gallery_items").select("media_asset_id,gallery:galleries(title)"),
+    supabase.from("concerts").select("cover_media_id,title").not("cover_media_id", "is", null),
+    supabase.from("repertoire").select("cover_media_id,title").not("cover_media_id", "is", null),
+    supabase.from("page_content").select("page_key,content"),
+    supabase.from("page_content_drafts").select("page_key,content"),
+    supabase.from("page_content_localizations").select("page_key,locale,content"),
+    supabase.from("page_content_localization_drafts").select("page_key,locale,content"),
+    ]),
+  ]);
   const usagesByAsset = new Map<string, string[]>();
   const noteUsage = (mediaId: string | null, label: string) => {
     if (mediaId) usagesByAsset.set(mediaId, [...(usagesByAsset.get(mediaId) ?? []), label]);
@@ -86,11 +109,11 @@ export async function getAdminMediaLibrary(): Promise<AdminMediaLibrary> {
     const serialized = JSON.stringify(record.content);
     for (const asset of assets) if (serialized.includes(`\"${asset.id}\"`)) noteUsage(asset.id, `Website: ${record.page_key as string}`);
   }
-  return { assets: assets.map((asset) => ({ ...asset, albums: albumsByAsset.get(asset.id) ?? [], tags: tagsByAsset.get(asset.id) ?? [], usages: usagesByAsset.get(asset.id) ?? [] })), albums, tags, organizationAvailable };
+  return { assets: withMediaOrganization(assets, organization, usagesByAsset), albums: organization.albums, tags: organization.tags, organizationAvailable: organization.organizationAvailable };
 }
 
 export async function getAdminMediaPickerAssets() {
-  return (await getAdminMediaLibrary()).assets;
+  return (await getAdminMediaPickerLibrary()).assets;
 }
 
 export async function getAdminMediaAsset(id: string): Promise<AdminMediaAsset | null> {

@@ -12,7 +12,7 @@ import {
 import {
   getAdminGallery,
   getAdminGalleryImages,
-  getAdminMediaLibrary,
+  getAdminMediaPickerLibrary,
 } from "@/lib/queries/admin-content";
 
 export const metadata = { title: "Edit gallery · Admin" };
@@ -44,7 +44,7 @@ export default async function EditGalleryPage({
   const [gallery, images, library, query] = await Promise.all([
     getAdminGallery(id),
     getAdminGalleryImages(id),
-    getAdminMediaLibrary(),
+    getAdminMediaPickerLibrary(),
     searchParams,
   ]);
 
