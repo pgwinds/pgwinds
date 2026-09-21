@@ -37,6 +37,7 @@ export function MediaPicker({
   const [query, setQuery] = useState("");
   const [album, setAlbum] = useState("");
   const [tag, setTag] = useState("");
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const selected = assets.filter((asset) => selectedIds.includes(asset.id));
   const albums = useMemo(
@@ -84,33 +85,13 @@ export function MediaPicker({
       {selectedIds.map((id) => <input key={id} type="hidden" name={name} value={id} />)}
 
       <div className="admin-media-picker__controls">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="ค้นหารูปจากชื่อหรือคำบรรยาย"
-          aria-label={`ค้นหา ${label}`}
-        />
+        <button type="button" onClick={() => setIsPickerOpen((current) => !current)} aria-expanded={isPickerOpen}>
+          {isPickerOpen ? "ซ่อนรายการรูป" : selectedIds.length > 0 ? "เปลี่ยนรูป" : "เลือกรูป"}
+        </button>
         {optional && selectedIds.length > 0 && (
           <button type="button" onClick={() => setSelectedIds([])}>ล้างรูปที่เลือก</button>
         )}
       </div>
-
-      {(albums.length > 0 || tags.length > 0) && (
-        <div className="admin-media-picker__filters">
-          {albums.length > 0 && (
-            <select value={album} onChange={(event) => selectAlbum(event.target.value)} aria-label="Filter by album">
-              <option value="">{needsAlbumSelection ? "เลือก Album เพื่อแสดงรูป" : "ทุก Album"}</option>
-              {albums.map((item) => <option key={item}>{item}</option>)}
-            </select>
-          )}
-          {tags.length > 0 && (
-            <select value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filter by tag">
-              <option value="">ทุก Tag</option>
-              {tags.map((item) => <option key={item}>{item}</option>)}
-            </select>
-          )}
-        </div>
-      )}
 
       {selected.length > 0 && (
         <p className="admin-media-picker__selected">
@@ -118,31 +99,56 @@ export function MediaPicker({
         </p>
       )}
 
-      {needsAlbumSelection && !album ? (
-        <p className="admin-media-picker__empty">เลือก Album ก่อน เพื่อแสดงรูปที่นำเข้า Gallery ได้</p>
-      ) : (
-        <>
-          <div className="admin-media-picker__grid" role="listbox" aria-label={label}>
-            {matching.map((asset) => (
-              <button
-                key={asset.id}
-                type="button"
-                role="option"
-                aria-selected={selectedIds.includes(asset.id)}
-                className={selectedIds.includes(asset.id) ? "is-selected" : ""}
-                onClick={() => toggleSelection(asset.id)}
-              >
-                <Image src={asset.publicUrl} alt="" width={320} height={200} />
-                <span>{asset.altText}</span>
-              </button>
-            ))}
+      {isPickerOpen && <div className="admin-media-picker__browse">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="ค้นหารูปจากชื่อหรือคำบรรยาย"
+          aria-label={`ค้นหา ${label}`}
+        />
+        {(albums.length > 0 || tags.length > 0) && (
+          <div className="admin-media-picker__filters">
+            {albums.length > 0 && (
+              <select value={album} onChange={(event) => selectAlbum(event.target.value)} aria-label="Filter by album">
+                <option value="">{needsAlbumSelection ? "เลือก Album เพื่อแสดงรูป" : "ทุก Album"}</option>
+                {albums.map((item) => <option key={item}>{item}</option>)}
+              </select>
+            )}
+            {tags.length > 0 && (
+              <select value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filter by tag">
+                <option value="">ทุก Tag</option>
+                {tags.map((item) => <option key={item}>{item}</option>)}
+              </select>
+            )}
           </div>
-          {matching.length === 0 && <p className="admin-help">ไม่พบรูปที่ตรงกับคำค้นหา</p>}
-          {assets.length > matching.length && (
-            <p className="admin-help">แสดงสูงสุด 24 รูป โปรดค้นหาหรือเลือก Album/Tag เพื่อจำกัดรายการ</p>
-          )}
-        </>
-      )}
+        )}
+
+        {needsAlbumSelection && !album ? (
+          <p className="admin-media-picker__empty">เลือก Album ก่อน เพื่อแสดงรูปที่นำเข้า Gallery ได้</p>
+        ) : (
+          <>
+            <div className="admin-media-picker__grid" role="listbox" aria-label={label}>
+              {matching.map((asset) => (
+                <button
+                  key={asset.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selectedIds.includes(asset.id)}
+                  className={selectedIds.includes(asset.id) ? "is-selected" : ""}
+                  onClick={() => toggleSelection(asset.id)}
+                >
+                  <Image src={asset.publicUrl} alt="" width={320} height={200} />
+                  <span>{asset.altText}</span>
+                </button>
+              ))}
+            </div>
+            {matching.length === 0 && <p className="admin-help">ไม่พบรูปที่ตรงกับคำค้นหา</p>}
+            {assets.length > matching.length && (
+              <p className="admin-help">แสดงสูงสุด 24 รูป โปรดค้นหาหรือเลือก Album/Tag เพื่อจำกัดรายการ</p>
+            )}
+          </>
+        )}
+      </div>}
     </div>
   );
 }
