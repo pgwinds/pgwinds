@@ -12,6 +12,23 @@ function parseHomeContent(value: unknown): HomeContent | null {
   return parsed.success ? parsed.data : null;
 }
 
+type StoredPageContent = { content: unknown; updated_at?: string | null } | null | undefined;
+
+function selectLatestEditorContent<T>(draftRecord: StoredPageContent, publishedRecord: StoredPageContent, parse: (value: unknown) => T | null, fallback: T) {
+  const draft = parse(draftRecord?.content);
+  const published = parse(publishedRecord?.content);
+  const draftUpdatedAt = draftRecord?.updated_at ? Date.parse(draftRecord.updated_at) : Number.NEGATIVE_INFINITY;
+  const publishedUpdatedAt = publishedRecord?.updated_at ? Date.parse(publishedRecord.updated_at) : Number.NEGATIVE_INFINITY;
+
+  // A previously saved English draft must not hide a newer Thai publication.
+  // A later draft still wins, so edits remain available on the next visit.
+  const editorValue = draft && (!published || draftUpdatedAt > publishedUpdatedAt)
+    ? draft
+    : published ?? draft ?? fallback;
+
+  return { draft: editorValue, published };
+}
+
 export async function getPublishedHomeContent(locale: Locale = "en"): Promise<{ content: HomeContent; media: HomeMediaUrls }> {
   const fallback = localizeHomeContent(defaultHomeContent, locale);
   if (!isSupabaseConfigured) return { content: fallback, media: { desktop: null, mobile: null, featured: null } };
@@ -36,22 +53,21 @@ export async function getAdminHomeContent(locale: Locale = "en"): Promise<{ draf
   const supabase = await createClient();
   const draftTable = locale === "th" ? "page_content_localization_drafts" : "page_content_drafts";
   const publishedTable = locale === "th" ? "page_content_localizations" : "page_content";
-  let draftQuery = supabase.from(draftTable).select("content").eq("page_key", "home");
-  let publishedQuery = supabase.from(publishedTable).select("content").eq("page_key", "home");
+  let draftQuery = supabase.from(draftTable).select("content,updated_at").eq("page_key", "home");
+  let publishedQuery = supabase.from(publishedTable).select("content,updated_at").eq("page_key", "home");
   if (locale === "th") { draftQuery = draftQuery.eq("locale", "th"); publishedQuery = publishedQuery.eq("locale", "th"); }
   const [{ data: draft }, { data: published }] = await Promise.all([
     draftQuery.maybeSingle(), publishedQuery.maybeSingle(),
   ]);
-  const publishedContent = parseHomeContent(published?.content);
-  return { draft: parseHomeContent(draft?.content) ?? publishedContent ?? fallback, published: publishedContent };
+  return selectLatestEditorContent(draft, published, parseHomeContent, fallback);
 }
 
 async function getPageVersions(pageKey: string, locale: Locale = "en") {
   const supabase = await createClient();
   const draftTable = locale === "th" ? "page_content_localization_drafts" : "page_content_drafts";
   const publishedTable = locale === "th" ? "page_content_localizations" : "page_content";
-  let draftQuery = supabase.from(draftTable).select("content").eq("page_key", pageKey);
-  let publishedQuery = supabase.from(publishedTable).select("content").eq("page_key", pageKey);
+  let draftQuery = supabase.from(draftTable).select("content,updated_at").eq("page_key", pageKey);
+  let publishedQuery = supabase.from(publishedTable).select("content,updated_at").eq("page_key", pageKey);
   if (locale === "th") { draftQuery = draftQuery.eq("locale", "th"); publishedQuery = publishedQuery.eq("locale", "th"); }
   return Promise.all([
     draftQuery.maybeSingle(), publishedQuery.maybeSingle(),
@@ -103,10 +119,10 @@ export async function getAdminCollectionAppearance(pageKey: CollectionAppearance
   const fallback = defaultCollectionAppearance(pageKey, locale);
   if (!isSupabaseConfigured) return { draft: fallback, published: null };
   const [{ data: draft }, { data: published }] = await getPageVersions(pageKey, locale);
-  const publishedResult = collectionAppearanceSchema.safeParse(published?.content);
-  const draftResult = collectionAppearanceSchema.safeParse(draft?.content);
-  const publishedContent = publishedResult.success ? publishedResult.data : null;
-  return { draft: draftResult.success ? draftResult.data : publishedContent ?? fallback, published: publishedContent };
+  return selectLatestEditorContent(draft, published, (content) => {
+    const result = collectionAppearanceSchema.safeParse(content);
+    return result.success ? result.data : null;
+  }, fallback);
 }
 
 export async function getMediaPublicUrls(mediaIds: string[]): Promise<Record<string, string>> {
@@ -136,10 +152,10 @@ export async function getAdminAboutContent(locale: Locale = "en"): Promise<{ dra
   const fallback = localizeAboutContent(defaultAboutContent, locale);
   if (!isSupabaseConfigured) return { draft: fallback, published: null };
   const [{ data: draft }, { data: published }] = await getPageVersions("about", locale);
-  const publishedResult = aboutContentSchema.safeParse(published?.content);
-  const draftResult = aboutContentSchema.safeParse(draft?.content);
-  const publishedContent = publishedResult.success ? publishedResult.data : null;
-  return { draft: draftResult.success ? draftResult.data : publishedContent ?? fallback, published: publishedContent };
+  return selectLatestEditorContent(draft, published, (content) => {
+    const result = aboutContentSchema.safeParse(content);
+    return result.success ? result.data : null;
+  }, fallback);
 }
 
 export async function getPublishedContactContent(locale: Locale = "en"): Promise<ContactContent> {
@@ -160,10 +176,10 @@ export async function getAdminContactContent(locale: Locale = "en"): Promise<{ d
   const fallback = localizeContactContent(defaultContactContent, locale);
   if (!isSupabaseConfigured) return { draft: fallback, published: null };
   const [{ data: draft }, { data: published }] = await getPageVersions("contact", locale);
-  const publishedResult = contactContentSchema.safeParse(published?.content);
-  const draftResult = contactContentSchema.safeParse(draft?.content);
-  const publishedContent = publishedResult.success ? publishedResult.data : null;
-  return { draft: draftResult.success ? draftResult.data : publishedContent ?? fallback, published: publishedContent };
+  return selectLatestEditorContent(draft, published, (content) => {
+    const result = contactContentSchema.safeParse(content);
+    return result.success ? result.data : null;
+  }, fallback);
 }
 
 export type SocialLink = { id: string; platform: string; label: string | null; url: string; visible: boolean; position: number };
@@ -235,8 +251,8 @@ export const getPublishedSiteSettings = cache(async (): Promise<{ content: SiteS
 export async function getAdminSiteSettings(): Promise<{ draft: SiteSettingsContent; published: SiteSettingsContent | null }> {
   if (!isSupabaseConfigured) return { draft: defaultSiteSettings, published: null };
   const [{ data: draft }, { data: published }] = await getPageVersions("site-settings");
-  const publishedResult = siteSettingsContentSchema.safeParse(published?.content);
-  const draftResult = siteSettingsContentSchema.safeParse(draft?.content);
-  const publishedContent = publishedResult.success ? publishedResult.data : null;
-  return { draft: draftResult.success ? draftResult.data : publishedContent ?? defaultSiteSettings, published: publishedContent };
+  return selectLatestEditorContent(draft, published, (content) => {
+    const result = siteSettingsContentSchema.safeParse(content);
+    return result.success ? result.data : null;
+  }, defaultSiteSettings);
 }
